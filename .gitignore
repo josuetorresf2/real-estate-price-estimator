@@ -1,0 +1,8 @@
+.DS_Store
+.venv/
+__pycache__/
+.pytest_cache/
+*.egg-info/
+models/
+data/generated_housing.csv
+data/zillow_zhvi_zip.csv
