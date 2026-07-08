@@ -27,6 +27,13 @@ def test_parse_form_reports_invalid_numbers():
     assert "Square feet must be a number." in errors
 
 
+def test_parse_form_allows_blank_year_built():
+    features, _, errors = parse_form(valid_body().replace("year_built=1998", "year_built="))
+
+    assert errors == []
+    assert features["year_built"] is None
+
+
 def test_render_page_escapes_values_and_shows_prediction():
     page = render_page({"city": "<Austin>", "neighborhood": "North Loop"}, prediction=515000)
 

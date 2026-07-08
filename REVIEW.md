@@ -9,6 +9,7 @@
 - `python -m real_estate_price_estimator.cli predict --model models/price_pipeline.joblib ...` returns a positive predicted price.
 - `python -m real_estate_price_estimator.web_app --port 8000` serves a browser form for non-technical users.
 - `/predict` blends the trained model with Zillow Research ZIP-level ZHVI when the ZIP appears in the public dataset.
+- `year_built` is optional for prediction; missing values are handled by the model pipeline imputer.
 - `/static/vendor/three.module.js` serves the local Three.js module so the 3D scene does not rely on `unpkg.com`.
 - `./verify.sh` passes from the project root.
 

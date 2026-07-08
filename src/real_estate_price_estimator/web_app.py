@@ -27,7 +27,7 @@ DEFAULT_FORM_VALUES = {
     "bedrooms": "3",
     "bathrooms": "2",
     "lot_size": "0.18",
-    "year_built": "1998",
+    "year_built": "",
     "school_rating": "8.6",
     "distance_to_city_center_miles": "4.2",
     "crime_index": "31",
@@ -42,7 +42,7 @@ FIELD_LABELS = {
     "bedrooms": "Bedrooms",
     "bathrooms": "Bathrooms",
     "lot_size": "Lot size (acres)",
-    "year_built": "Year built",
+    "year_built": "Year built (optional)",
     "school_rating": "School rating",
     "distance_to_city_center_miles": "Miles to city center",
     "crime_index": "Crime index",
@@ -58,6 +58,7 @@ NUMERIC_FIELDS = {
     "distance_to_city_center_miles": float,
     "crime_index": float,
 }
+OPTIONAL_FIELDS = {"address", "year_built"}
 
 
 def ensure_model(model_path: Path = DEFAULT_MODEL_PATH, data_path: Path = DEFAULT_DATA_PATH):
@@ -76,6 +77,9 @@ def parse_form(body: str) -> tuple[dict[str, object], dict[str, str], list[str]]
     features: dict[str, object] = {}
 
     for field, value in values.items():
+        if field in OPTIONAL_FIELDS and not value:
+            features[field] = None
+            continue
         if field == "address":
             continue
         if not value:
@@ -143,6 +147,7 @@ def render_page(
         <label class="{field}">
           <span>{html.escape(label)}</span>
           <input name="{field}" value="{html.escape(form_values.get(field, ''))}" {input_attributes(field)}>
+          {field_help(field)}
         </label>
         """
         for field, label in FIELD_LABELS.items()
@@ -474,6 +479,11 @@ def render_page(
       font-weight: 700;
       color: white;
     }}
+    .field-help {{
+      color: var(--muted);
+      font-size: 0.75rem;
+      line-height: 1.25;
+    }}
     .result span {{
       color: var(--muted);
       font-weight: 700;
@@ -767,10 +777,18 @@ def render_page(
 
 def input_attributes(field: str) -> str:
     if field == "year_built":
-        return 'type="number" min="1800" max="2026" step="1"'
+        return 'type="number" min="1800" max="2026" step="1" placeholder="Leave blank unless known"'
     if field in {"address", "city", "neighborhood", "zip_code"}:
         return 'type="text"'
     return 'type="number" step="0.01"'
+
+
+def field_help(field: str) -> str:
+    if field == "year_built":
+        return '<small class="field-help">Leave blank if unknown. Enter 2026 for a brand-new build scenario.</small>'
+    if field == "address":
+        return '<small class="field-help">Optional. Free Zillow data is ZIP-level, not address-level.</small>'
+    return ""
 
 
 class AppHandler(BaseHTTPRequestHandler):

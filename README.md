@@ -7,7 +7,7 @@ The project uses a scikit-learn `Pipeline` so categorical encoding, numeric scal
 ## Features
 
 - Location fields: `city`, `neighborhood`, `zip_code`
-- Property fields: `square_feet`, `bedrooms`, `bathrooms`, `lot_size`, `year_built`
+- Property fields: `square_feet`, `bedrooms`, `bathrooms`, `lot_size`, optional `year_built`
 - Local context: `school_rating`, `distance_to_city_center_miles`, `crime_index`
 - Optional free Zillow Research ZIP-level ZHVI market calibration
 - Premium 3D browser UI with a local bundled Three.js runtime
@@ -72,7 +72,6 @@ python -m real_estate_price_estimator.cli predict \
   --bedrooms 3 \
   --bathrooms 2 \
   --lot-size 0.18 \
-  --year-built 1998 \
   --school-rating 8.6 \
   --distance-to-city-center-miles 4.2 \
   --crime-index 31
@@ -87,6 +86,8 @@ city,neighborhood,zip_code,square_feet,bedrooms,bathrooms,lot_size,year_built,sc
 ```
 
 The `price` column is the training target and should be omitted only for prediction input.
+
+For predictions, `year_built` is optional. Leave it blank when it is unknown; the model pipeline imputes a reasonable value from training data. Enter a year only when you know it or want to model a brand-new build scenario.
 
 To serve an app backed by your own model:
 
@@ -104,4 +105,4 @@ PYTHONPATH=src python -m real_estate_price_estimator.web_app \
 
 The sample dataset is synthetic and intended for development only. For production use, retrain with current local MLS, assessor, school district, and neighborhood market data.
 
-Zillow integration uses the public Zillow Research ZHVI ZIP-level dataset. It is a market signal for the typical home value in a ZIP code, not an address-level Zestimate. Proper attribution to Zillow is shown in the app.
+Zillow integration uses the public Zillow Research ZHVI ZIP-level dataset. It is a market signal for the typical home value in a ZIP code, not an address-level Zestimate, and it does not include address-level year-built data. Proper attribution to Zillow is shown in the app.

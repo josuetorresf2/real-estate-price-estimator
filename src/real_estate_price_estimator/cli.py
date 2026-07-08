@@ -36,7 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
     predict_parser.add_argument("--bedrooms", required=True, type=float)
     predict_parser.add_argument("--bathrooms", required=True, type=float)
     predict_parser.add_argument("--lot-size", required=True, type=float, dest="lot_size")
-    predict_parser.add_argument("--year-built", required=True, type=int, dest="year_built")
+    predict_parser.add_argument("--year-built", default=None, type=int, dest="year_built")
     predict_parser.add_argument("--school-rating", required=True, type=float, dest="school_rating")
     predict_parser.add_argument(
         "--distance-to-city-center-miles",
