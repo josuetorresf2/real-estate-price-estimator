@@ -10,10 +10,14 @@ A premium 3D web app and regression pipeline for estimating U.S. home sale price
 - Lets users enter `unknown` or leave most property facts blank.
 - Uses model imputation for partial property data, but avoids pretending the model is meaningful when core facts are missing.
 - Uses a supplied address to look up city, state, ZIP, and map coordinates through the U.S. Census Geocoder.
-- Verifies addresses as users type and updates city, state, and ZIP from Census when a match is found.
+- Verifies addresses as users type, shows address candidates, and updates city, state, and ZIP when a match is found.
+- Supports richer autocomplete through `GEOAPIFY_API_KEY`, with Census Geocoder as the no-key fallback.
+- Optionally fills address-level square feet, bedrooms, bathrooms, lot size, and year built through `ATTOM_API_KEY`.
+- Calculates miles to city center from Census Geocoder coordinates when available.
 - Calibrates estimates with Zillow Research ZIP-level ZHVI data when available.
 - Optionally blends U.S. Census ACS median home value when `CENSUS_API_KEY` is configured.
-- Shows an OpenStreetMap area preview when coordinates are available.
+- Optionally shows real exterior context through Google Street View Static API when `GOOGLE_STREET_VIEW_API_KEY` is configured.
+- Shows an Engrain-inspired property map panel with a selected-property marker, market layers, source badges, and OpenStreetMap area context when coordinates are available.
 - Runs a premium animated 3D interface with a locally bundled Three.js module, so the scene does not depend on a CDN.
 
 ![Estimate result](docs/images/estimate-result.jpg)
@@ -25,10 +29,14 @@ The app is intentionally transparent about source quality:
 - **Zillow Research ZHVI**: free ZIP-level typical home value signal. This is not an address-level Zestimate.
 - **U.S. Census Geocoder**: free address-to-location lookup for city, state, ZIP, and coordinates.
 - **U.S. Census ACS 5-year B25077**: optional government median owner-occupied home value by ZIP Code Tabulation Area. Requires `CENSUS_API_KEY`.
+- **ATTOM Property API**: optional address-level property facts such as living area, rooms, lot size, and year built. Requires `ATTOM_API_KEY`.
+- **Geoapify Address Autocomplete**: optional real address suggestions for partial user input. Requires `GEOAPIFY_API_KEY`.
+- **Google Street View Static API**: optional real exterior/street-level imagery. Requires `GOOGLE_STREET_VIEW_API_KEY`.
 - **Trained regression model**: used only when core property facts are available; otherwise the app returns a public-data market baseline.
 - **OpenStreetMap**: area map preview when the Census Geocoder returns coordinates.
+- **Engrain/SightMap-inspired UX**: the app does not use Engrain's private platform, but borrows the product idea of an interactive property map with visual context and data layers.
 
-Public/free data generally does not include exact address-level beds, baths, square footage, lot size, or year built. Those fields can be entered when known; otherwise the app estimates using imputation and market context.
+Public/free Zillow Research and Census data generally do not include exact address-level beds, baths, square footage, lot size, or year built. Those fields can be entered when known, or auto-filled from ATTOM when an API key is configured. The app displays field-level source notes so users can see which facts were verified and which were unavailable.
 
 The app deliberately changes behavior based on data quality:
 
@@ -42,6 +50,9 @@ Source references:
 - [Zillow Public Real Estate Metrics API](https://www.zillowgroup.com/developers/api/public-data/real-estate-metrics/)
 - [U.S. Census Geocoder](https://geocoding.geo.census.gov/)
 - [U.S. Census ACS 5-Year API](https://www.census.gov/data/developers/data-sets/acs-5year.html)
+- [ATTOM Property API](https://api.developer.attomdata.com/)
+- [Geoapify Address Autocomplete API](https://apidocs.geoapify.com/docs/geocoding/address-autocomplete/)
+- [Google Street View Static API](https://developers.google.com/maps/documentation/streetview)
 - [OpenStreetMap](https://www.openstreetmap.org/)
 
 ## Quick Start
@@ -77,6 +88,46 @@ PYTHONPATH=src python -m real_estate_price_estimator.web_app --port 8000
 ```
 
 Without a key, the app still uses the Census Geocoder and Zillow Research ZHVI.
+
+## Optional Enrichment APIs
+
+Address-level facts and imagery are provider-backed because free Zillow Research and Census endpoints do not include them:
+
+```bash
+export ATTOM_API_KEY=your_attom_key_here
+export GEOAPIFY_API_KEY=your_geoapify_key_here
+export GOOGLE_STREET_VIEW_API_KEY=your_google_maps_key_here
+PYTHONPATH=src python -m real_estate_price_estimator.web_app --port 8000
+```
+
+When `GEOAPIFY_API_KEY` is set, partial address input can return real autocomplete suggestions. When `ATTOM_API_KEY` is set, the live address lookup can fill square feet, bedrooms, bathrooms, lot size, and year built from property records. When `GOOGLE_STREET_VIEW_API_KEY` is set, result pages can show real Street View exterior context for the verified address.
+
+## Docker
+
+Build and run locally:
+
+```bash
+docker build -t real-estate-price-estimator .
+docker run --rm -p 8000:8000 real-estate-price-estimator
+```
+
+Open:
+
+```text
+http://127.0.0.1:8000
+```
+
+## Free Deployment
+
+This repo includes `render.yaml` and a `Dockerfile` for Render. Render web services receive a free `*.onrender.com` subdomain, and the service is configured to bind to `0.0.0.0` through the `PORT` environment variable.
+
+Deploy steps:
+
+1. Push this repository to GitHub.
+2. In Render, create a new Blueprint from the repository.
+3. Select the free web service plan.
+4. Add optional secret environment variables: `CENSUS_API_KEY`, `GEOAPIFY_API_KEY`, `ATTOM_API_KEY`, and `GOOGLE_STREET_VIEW_API_KEY`.
+5. Deploy. Render will build the Docker image and publish the app on its generated `onrender.com` URL.
 
 ## Training
 

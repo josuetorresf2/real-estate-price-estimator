@@ -1,0 +1,9 @@
+.git
+.venv
+.pytest_cache
+__pycache__
+*.pyc
+models
+data/generated_housing.csv
+data/zillow_zhvi_zip.csv
+.DS_Store

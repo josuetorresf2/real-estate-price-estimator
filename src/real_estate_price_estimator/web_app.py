@@ -4,18 +4,23 @@ import argparse
 import html
 import json
 import mimetypes
+import os
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 from .market_data import (
     census_home_value_for_zip,
+    distance_to_city_center_miles,
     ensure_zhvi_csv,
     geocode_address,
+    geocode_address_matches,
+    geoapify_address_suggestions,
     latest_zhvi_for_zip,
     market_calibrated_estimate,
+    property_facts_for_address,
 )
 from .pipeline import load_model, load_training_data, predict_price, save_model, train
 
@@ -68,6 +73,7 @@ NUMERIC_FIELDS = {
     "crime_index": float,
 }
 MODEL_REQUIRED_FACTS = {"square_feet", "bedrooms", "bathrooms", "lot_size"}
+ADDRESS_ENRICHMENT_FIELDS = {"square_feet", "bedrooms", "bathrooms", "lot_size", "year_built", "distance_to_city_center_miles"}
 FEATURE_FIELDS = {"city", "neighborhood", "zip_code", *NUMERIC_FIELDS}
 OPTIONAL_FIELDS = {
     "address",
@@ -147,6 +153,17 @@ def apply_address_location(values: dict[str, str], features: dict[str, object], 
     if not values.get("zip_code") and location.zip_code:
         values["zip_code"] = location.zip_code
         features["zip_code"] = location.zip_code
+
+
+def apply_property_facts(values: dict[str, str], features: dict[str, object], facts) -> None:
+    if facts is None:
+        return
+    for field, value in facts.as_form_values().items():
+        if values.get(field, "").strip().lower() not in {"", "unknown", "unkown", "uknown", "n/a", "na"}:
+            continue
+        values[field] = value
+        if field in NUMERIC_FIELDS:
+            features[field] = NUMERIC_FIELDS[field](value)
 
 
 def finalize_prediction_features(features: dict[str, object]) -> dict[str, object]:
@@ -239,20 +256,142 @@ def decide_estimate(
     )
 
 
-def map_preview(address_location: object | None) -> str:
+def map_preview(
+    address_location: object | None,
+    *,
+    market_signal: object | None = None,
+    census_signal: object | None = None,
+    decision: EstimateDecision | None = None,
+) -> str:
     if address_location is None or address_location.latitude is None or address_location.longitude is None:
         return ""
     lat = address_location.latitude
     lon = address_location.longitude
     marker = f"{lat},{lon},pm2rdm"
-    bbox = f"{lon - 0.012},{lat - 0.008},{lon + 0.012},{lat + 0.008}"
+    bbox = f"{lon - 0.018},{lat - 0.012},{lon + 0.018},{lat + 0.012}"
     map_url = f"https://www.openstreetmap.org/export/embed.html?bbox={bbox}&layer=mapnik&marker={marker}"
+    source_items = ["Census geocoded address", "OpenStreetMap context"]
+    if market_signal is not None:
+        source_items.append("Zillow ZIP value layer")
+    if census_signal is not None:
+        source_items.append("Census ACS value layer")
+    layers = "".join(f"<li>{html.escape(item)}</li>" for item in source_items)
+    range_text = "Run estimate"
+    if decision is not None and decision.low is not None and decision.high is not None:
+        range_text = f"{format_currency(decision.low)} - {format_currency(decision.high)}"
+    zillow_text = "No ZIP value loaded"
+    if market_signal is not None:
+        zillow_text = f"{format_currency(market_signal.typical_home_value)} ZIP typical value"
+    census_text = "Optional ACS value"
+    if census_signal is not None:
+        census_text = f"{format_currency(census_signal.median_home_value)} ACS median value"
     return f"""
-    <div class="map-preview">
-      <iframe title="Mapped address area" src="{html.escape(map_url)}" loading="lazy"></iframe>
-      <p class="source-note">Map preview: OpenStreetMap area context. This is not a house photo or exterior rendering.</p>
-    </div>
+    <section class="property-map" aria-label="Property map intelligence">
+      <div class="map-stage">
+        <iframe title="Mapped address area" src="{html.escape(map_url)}" loading="lazy"></iframe>
+        <div class="map-pin" aria-hidden="true"><span></span></div>
+        <div class="map-radar" aria-hidden="true"></div>
+      </div>
+      <div class="map-dossier">
+        <div>
+          <span>Selected property</span>
+          <strong>{html.escape(address_location.matched_address)}</strong>
+        </div>
+        <div class="map-metrics">
+          <div><span>Estimate range</span><strong>{range_text}</strong></div>
+          <div><span>Market layer</span><strong>{zillow_text}</strong></div>
+          <div><span>Gov layer</span><strong>{census_text}</strong></div>
+        </div>
+        <ul>{layers}</ul>
+      </div>
+    </section>
     """
+
+
+def street_view_preview(address_location: object | None) -> str:
+    image_url = street_view_url(address_location)
+    if not image_url:
+        return """
+        <p class="source-note">House image: configure GOOGLE_STREET_VIEW_API_KEY to show real Google Street View imagery when available.</p>
+        """
+    return f"""
+    <figure class="house-preview">
+      <img src="{html.escape(image_url)}" alt="Street View image near the verified address" loading="lazy">
+      <figcaption>Real exterior context from Google Street View Static API when imagery is available.</figcaption>
+    </figure>
+    """
+
+
+def street_view_url(address_location: object | None) -> str:
+    key = os.getenv("GOOGLE_STREET_VIEW_API_KEY")
+    if not key or address_location is None:
+        return ""
+    if address_location.latitude is not None and address_location.longitude is not None:
+        location = f"{address_location.latitude},{address_location.longitude}"
+    else:
+        location = getattr(address_location, "matched_address", "")
+    if not location:
+        return ""
+    query = urlencode(
+        {
+            "size": "640x360",
+            "location": location,
+            "fov": "82",
+            "pitch": "4",
+            "source": "outdoor",
+            "key": key,
+        }
+    )
+    return f"https://maps.googleapis.com/maps/api/streetview?{query}"
+
+
+def property_fact_payload(facts, distance_miles: float | None) -> dict[str, object]:
+    fields: dict[str, dict[str, str]] = {}
+    if facts is not None:
+        for field, value in facts.as_form_values().items():
+            fields[field] = {"value": value, "source": facts.source}
+    if distance_miles is not None:
+        fields["distance_to_city_center_miles"] = {
+            "value": f"{distance_miles:.1f}",
+            "source": "Calculated from U.S. Census Geocoder coordinates",
+        }
+    missing = {
+        "square_feet": "Address-level square footage requires a property-record provider such as ATTOM.",
+        "bedrooms": "Address-level bedrooms require a property-record provider such as ATTOM.",
+        "bathrooms": "Address-level bathrooms require a property-record provider such as ATTOM.",
+        "lot_size": "Address-level lot size requires a property-record provider such as ATTOM.",
+        "year_built": "Address-level year built requires a property-record provider such as ATTOM.",
+        "school_rating": "School rating is not provided by Zillow Research or Census Geocoder.",
+        "crime_index": "Crime index is not provided by Zillow Research or Census Geocoder.",
+    }
+    for field in fields:
+        missing.pop(field, None)
+    return {
+        "fields": fields,
+        "missing": missing,
+        "provider_configured": bool(os.getenv("ATTOM_API_KEY")),
+    }
+
+
+def location_payload(location) -> dict[str, str]:
+    return {
+        "city": location.city,
+        "state": location.state,
+        "zip_code": location.zip_code,
+        "matched_address": location.matched_address,
+        "latitude": "" if location.latitude is None else str(location.latitude),
+        "longitude": "" if location.longitude is None else str(location.longitude),
+        "source": location.source,
+    }
+
+
+def enriched_address_query(address: str, *, city: str = "", state: str = "", zip_code: str = "") -> str:
+    parts = [address.strip()]
+    for value in (city, state, zip_code):
+        value = value.strip()
+        if value and value.lower() not in address.lower():
+            parts.append(value)
+    return " ".join(parts).strip()
 
 
 def render_page(
@@ -311,7 +450,8 @@ def render_page(
         <section class="result" aria-live="polite">
           <span>Market-calibrated estimate</span>
           <strong>{format_currency(prediction)}</strong>
-          {map_preview(address_location)}
+          {street_view_preview(address_location)}
+          {map_preview(address_location, market_signal=market_signal, census_signal=census_signal, decision=decision)}
           {decision_note}
           {f'<p class="model-note">Feature model: {format_currency(model_prediction)}</p>' if model_prediction is not None else ''}
           {market_note}
@@ -332,6 +472,8 @@ def render_page(
           <input name="{field}" value="{html.escape(form_values.get(field, ''))}" {input_attributes(field)}>
           {field_help(field)}
           {address_status(field)}
+          {address_suggestions(field)}
+          {field_status(field)}
         </label>
         """
         for field, label in FIELD_LABELS.items()
@@ -663,22 +805,132 @@ def render_page(
       font-weight: 700;
       color: white;
     }}
-    .map-preview {{
+    .property-map {{
       display: grid;
-      gap: 8px;
-      margin: 8px 0;
-    }}
-    .map-preview iframe {{
-      width: 100%;
-      height: 180px;
+      gap: 10px;
+      margin: 8px 0 12px;
       border: 1px solid rgba(215, 226, 234, 0.14);
       border-radius: 8px;
-      filter: grayscale(0.25) contrast(1.05) brightness(0.88);
+      overflow: hidden;
+      background: rgba(215, 226, 234, 0.055);
     }}
-    .field-help {{
+    .map-stage {{
+      position: relative;
+      min-height: 230px;
+      overflow: hidden;
+      background: #101216;
+    }}
+    .house-preview {{
+      display: grid;
+      gap: 8px;
+      margin: 4px 0 8px;
+    }}
+    .house-preview img {{
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      object-fit: cover;
+      border: 1px solid rgba(215, 226, 234, 0.14);
+      border-radius: 8px;
+      filter: contrast(1.04) saturate(0.92);
+    }}
+    .house-preview figcaption {{
       color: var(--muted);
       font-size: 0.75rem;
       line-height: 1.25;
+    }}
+    .map-stage iframe {{
+      width: 100%;
+      height: 230px;
+      border: 0;
+      filter: grayscale(0.25) contrast(1.05) brightness(0.88);
+    }}
+    .map-pin {{
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 30px;
+      height: 30px;
+      transform: translate(-50%, -86%);
+      border-radius: 50% 50% 50% 0;
+      background: linear-gradient(123deg, #b600a8, #be4c00);
+      rotate: -45deg;
+      box-shadow: 0 0 34px rgba(182, 0, 168, 0.72);
+      pointer-events: none;
+    }}
+    .map-pin span {{
+      position: absolute;
+      inset: 8px;
+      border-radius: 50%;
+      background: white;
+    }}
+    .map-radar {{
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 180px;
+      height: 180px;
+      transform: translate(-50%, -50%);
+      border: 1px solid rgba(182, 0, 168, 0.55);
+      border-radius: 50%;
+      box-shadow: 0 0 0 34px rgba(182, 0, 168, 0.08), 0 0 0 74px rgba(190, 76, 0, 0.05);
+      pointer-events: none;
+    }}
+    .map-dossier {{
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      background:
+        linear-gradient(180deg, rgba(215, 226, 234, 0.1), rgba(215, 226, 234, 0.035)),
+        rgba(12, 12, 12, 0.72);
+    }}
+    .map-dossier span {{
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }}
+    .map-dossier strong {{
+      display: block;
+      margin-top: 3px;
+      color: white;
+      font-size: 0.9rem;
+      line-height: 1.2;
+    }}
+    .map-metrics {{
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }}
+    .map-metrics div {{
+      border-top: 1px solid rgba(215, 226, 234, 0.12);
+      padding-top: 8px;
+    }}
+    .map-dossier ul {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }}
+    .map-dossier li {{
+      border: 1px solid rgba(215, 226, 234, 0.13);
+      border-radius: 999px;
+      padding: 4px 8px;
+      color: var(--muted);
+      font-size: 0.7rem;
+    }}
+    .field-help,
+    .field-status {{
+      color: var(--muted);
+      font-size: 0.75rem;
+      line-height: 1.25;
+    }}
+    .field-status[data-state="filled"] {{
+      color: #b8f7c5;
+    }}
+    .field-status[data-state="missing"] {{
+      color: var(--warn);
     }}
     .address-status {{
       min-height: 1rem;
@@ -691,6 +943,41 @@ def render_page(
     }}
     .address-status[data-state="error"] {{
       color: var(--warn);
+    }}
+    .suggestions {{
+      display: none;
+      gap: 6px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }}
+    .suggestions[data-open="true"] {{
+      display: grid;
+    }}
+    .suggestions button {{
+      min-height: 34px;
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid rgba(215, 226, 234, 0.14);
+      outline: 0;
+      background: rgba(215, 226, 234, 0.07);
+      box-shadow: none;
+      color: var(--ink);
+      text-align: left;
+      text-transform: none;
+      letter-spacing: 0;
+      font-size: 0.78rem;
+      line-height: 1.2;
+    }}
+    .easteregg {{
+      position: fixed;
+      right: 7px;
+      bottom: 5px;
+      z-index: 4;
+      color: rgba(215, 226, 234, 0.16);
+      font-size: 0.55rem;
+      letter-spacing: 0;
+      user-select: none;
     }}
     .result span {{
       color: var(--muted);
@@ -787,6 +1074,7 @@ def render_page(
   <div class="loader" aria-hidden="true"><div class="loader-orbit"><div class="loader-core"></div></div></div>
   <canvas id="cityScene" aria-hidden="true"></canvas>
   <div class="scene-vignette" aria-hidden="true"></div>
+  <span class="easteregg" aria-hidden="true">Joshue Torres</span>
   <main>
     <nav aria-label="Primary">
       <a href="#estimate">Estimate</a>
@@ -833,6 +1121,7 @@ def render_page(
     const stateInput = document.querySelector('input[name="state"]');
     const zipInput = document.querySelector('input[name="zip_code"]');
     const addressStatus = document.querySelector("[data-address-status]");
+    const addressSuggestions = document.querySelector("[data-address-suggestions]");
     let addressTimer;
     let addressController;
 
@@ -840,6 +1129,73 @@ def render_page(
       if (!addressStatus) return;
       addressStatus.textContent = message;
       addressStatus.dataset.state = state;
+    }}
+
+    function fieldInput(field) {{
+      return document.querySelector(`input[name="${{field}}"]`);
+    }}
+
+    function setFieldStatus(field, message, state = "") {{
+      const element = document.querySelector(`[data-field-status="${{field}}"]`);
+      if (!element) return;
+      element.textContent = message;
+      element.dataset.state = state;
+    }}
+
+    function applyEnrichment(payload) {{
+      const fields = payload.property_facts?.fields || {{}};
+      const missing = payload.property_facts?.missing || {{}};
+      Object.entries(fields).forEach(([field, detail]) => {{
+        const input = fieldInput(field);
+        if (!input) return;
+        const current = input.value.trim().toLowerCase();
+        if (!current || ["unknown", "unkown", "uknown", "n/a", "na"].includes(current)) {{
+          input.value = detail.value;
+        }}
+        setFieldStatus(field, detail.source, "filled");
+      }});
+      Object.entries(missing).forEach(([field, message]) => {{
+        setFieldStatus(field, message, "missing");
+      }});
+    }}
+
+    function renderSuggestions(suggestions) {{
+      if (!addressSuggestions) return;
+      addressSuggestions.innerHTML = "";
+      addressSuggestions.dataset.open = suggestions.length ? "true" : "false";
+      suggestions.slice(0, 5).forEach((suggestion) => {{
+        const item = document.createElement("li");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = suggestion.matched_address;
+        button.addEventListener("click", () => {{
+          addressInput.value = suggestion.matched_address;
+          addressSuggestions.dataset.open = "false";
+          verifyAddress();
+        }});
+        item.appendChild(button);
+        addressSuggestions.appendChild(item);
+      }});
+    }}
+
+    async function loadSuggestions(address) {{
+      if (address.length < 6) {{
+        renderSuggestions([]);
+        return;
+      }}
+      try {{
+        const params = new URLSearchParams({{
+          address,
+          city: cityInput.value.trim(),
+          state: stateInput.value.trim(),
+          zip_code: zipInput.value.trim(),
+        }});
+        const response = await fetch(`/api/suggest?${{params.toString()}}`);
+        const payload = await response.json();
+        renderSuggestions(payload.suggestions || []);
+      }} catch (error) {{
+        renderSuggestions([]);
+      }}
     }}
 
     async function verifyAddress() {{
@@ -863,6 +1219,8 @@ def render_page(
         cityInput.value = payload.city || cityInput.value;
         stateInput.value = payload.state || stateInput.value;
         zipInput.value = payload.zip_code || zipInput.value;
+        applyEnrichment(payload);
+        renderSuggestions(payload.suggestions || []);
         setAddressStatus(`Verified: ${{payload.matched_address}}`, "matched");
       }} catch (error) {{
         if (error.name === "AbortError") return;
@@ -873,7 +1231,10 @@ def render_page(
     if (addressInput) {{
       addressInput.addEventListener("input", () => {{
         clearTimeout(addressTimer);
-        addressTimer = setTimeout(verifyAddress, 650);
+        addressTimer = setTimeout(() => {{
+          loadSuggestions(addressInput.value.trim());
+          verifyAddress();
+        }}, 650);
       }});
       setAddressStatus("Type a full U.S. address to verify city, state, and ZIP.");
     }}
@@ -1058,6 +1419,18 @@ def address_status(field: str) -> str:
     return ""
 
 
+def address_suggestions(field: str) -> str:
+    if field == "address":
+        return '<ul class="suggestions" data-address-suggestions></ul>'
+    return ""
+
+
+def field_status(field: str) -> str:
+    if field in ADDRESS_ENRICHMENT_FIELDS or field in {"school_rating", "crime_index"}:
+        return f'<small class="field-status" data-field-status="{field}"></small>'
+    return ""
+
+
 class AppHandler(BaseHTTPRequestHandler):
     model = None
     zhvi_path = DEFAULT_ZHVI_PATH
@@ -1070,6 +1443,15 @@ class AppHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/geocode":
             params = parse_qs(parsed.query)
             self.respond_geocode(params.get("address", [""])[0])
+            return
+        if parsed.path == "/api/suggest":
+            params = parse_qs(parsed.query)
+            self.respond_suggestions(
+                params.get("address", [""])[0],
+                city=params.get("city", [""])[0],
+                state=params.get("state", [""])[0],
+                zip_code=params.get("zip_code", [""])[0],
+            )
             return
         if parsed.path.startswith("/static/"):
             self.respond_static(parsed.path.removeprefix("/static/"))
@@ -1097,6 +1479,12 @@ class AppHandler(BaseHTTPRequestHandler):
                 if values.get("address") and (not values.get("city") or not values.get("state") or not values.get("zip_code")):
                     address_location = self.lookup_address(values["address"])
                     apply_address_location(values, features, address_location)
+                    property_facts = self.lookup_property_facts(values["address"])
+                    apply_property_facts(values, features, property_facts)
+                    distance_miles = self.lookup_distance_to_city_center(address_location) if address_location is not None else None
+                    if distance_miles is not None and values.get("distance_to_city_center_miles", "").lower() in {"", "unknown", "unkown", "uknown", "n/a", "na"}:
+                        values["distance_to_city_center_miles"] = f"{distance_miles:.1f}"
+                        features["distance_to_city_center_miles"] = distance_miles
                 prediction_features = finalize_prediction_features(features)
                 lookup_zip = str(values.get("zip_code", "") or prediction_features.get("zip_code", ""))
                 market_signal = self.lookup_market_signal(lookup_zip)
@@ -1154,24 +1542,54 @@ class AppHandler(BaseHTTPRequestHandler):
     def lookup_address(self, address: str):
         return geocode_address(address)
 
+    def lookup_address_matches(self, address: str):
+        return geocode_address_matches(address)
+
+    def lookup_autocomplete_matches(self, address: str):
+        try:
+            return geoapify_address_suggestions(address)
+        except OSError:
+            return []
+
+    def lookup_property_facts(self, address: str):
+        try:
+            return property_facts_for_address(address)
+        except OSError:
+            return None
+
+    def lookup_distance_to_city_center(self, location):
+        try:
+            return distance_to_city_center_miles(location)
+        except OSError:
+            return None
+
+    def respond_suggestions(self, address: str, *, city: str = "", state: str = "", zip_code: str = "") -> None:
+        query = enriched_address_query(address, city=city, state=state, zip_code=zip_code)
+        try:
+            matches = self.lookup_autocomplete_matches(query) or self.lookup_address_matches(query)
+        except OSError:
+            matches = []
+        self.respond_json({"suggestions": [location_payload(match) for match in matches[:5]]})
+
     def respond_geocode(self, address: str) -> None:
         try:
             location = self.lookup_address(address)
+            suggestions = self.lookup_address_matches(address) if location is not None else []
         except OSError:
             location = None
+            suggestions = []
         if location is None:
             self.respond_json({"matched": False})
             return
+        property_facts = self.lookup_property_facts(address)
+        distance_miles = self.lookup_distance_to_city_center(location)
         self.respond_json(
             {
                 "matched": True,
-                "city": location.city,
-                "state": location.state,
-                "zip_code": location.zip_code,
-                "matched_address": location.matched_address,
-                "latitude": "" if location.latitude is None else str(location.latitude),
-                "longitude": "" if location.longitude is None else str(location.longitude),
-                "source": location.source,
+                **location_payload(location),
+                "suggestions": [location_payload(match) for match in suggestions[:5]],
+                "property_facts": property_fact_payload(property_facts, distance_miles),
+                "street_view_url": street_view_url(location),
             }
         )
 

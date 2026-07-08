@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: real-estate-price-estimator
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: PYTHONPATH
+        value: /app/src
+      - key: CENSUS_API_KEY
+        sync: false
+      - key: GEOAPIFY_API_KEY
+        sync: false
+      - key: ATTOM_API_KEY
+        sync: false
+      - key: GOOGLE_STREET_VIEW_API_KEY
+        sync: false

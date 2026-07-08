@@ -1,11 +1,14 @@
 from http import HTTPStatus
 
-from real_estate_price_estimator.market_data import AddressLocation
+from real_estate_price_estimator.market_data import AddressLocation, PropertyFacts
 from real_estate_price_estimator.web_app import (
     AppHandler,
     apply_address_location,
+    apply_property_facts,
+    address_suggestions,
     address_status,
     decide_estimate,
+    enriched_address_query,
     finalize_prediction_features,
     format_currency,
     known_property_fact_count,
@@ -144,6 +147,22 @@ def test_apply_address_location_fills_missing_city_state_zip():
     assert features["zip_code"] == "20500"
 
 
+def test_apply_property_facts_fills_unknown_inputs():
+    values = {"square_feet": "unknown", "bedrooms": "", "bathrooms": "1", "lot_size": "", "year_built": ""}
+    features = {}
+    facts = PropertyFacts(square_feet=2200, bedrooms=4, bathrooms=2.5, lot_size=0.19, year_built=2001)
+
+    apply_property_facts(values, features, facts)
+
+    assert values["square_feet"] == "2200"
+    assert values["bedrooms"] == "4"
+    assert values["bathrooms"] == "1"
+    assert values["lot_size"] == "0.19"
+    assert values["year_built"] == "2001"
+    assert features["square_feet"] == 2200
+    assert features["lot_size"] == 0.19
+
+
 def test_map_preview_renders_openstreetmap_if_coordinates_exist():
     location = AddressLocation(
         city="Washington",
@@ -163,6 +182,12 @@ def test_map_preview_renders_openstreetmap_if_coordinates_exist():
 def test_address_status_markup_is_rendered_only_for_address():
     assert "data-address-status" in address_status("address")
     assert address_status("city") == ""
+    assert "data-address-suggestions" in address_suggestions("address")
+    assert address_suggestions("city") == ""
+
+
+def test_enriched_address_query_uses_location_context():
+    assert enriched_address_query("5324 Alt", city="Austin", state="TX", zip_code="78751") == "5324 Alt Austin TX 78751"
 
 
 def test_get_predict_route_renders_app(monkeypatch):
@@ -193,6 +218,10 @@ def test_geocode_route_returns_verified_location(monkeypatch):
     )
 
     monkeypatch.setattr(AppHandler, "lookup_address", lambda self, address: location)
+    queries = []
+    monkeypatch.setattr(AppHandler, "lookup_address_matches", lambda self, address: queries.append(address) or [location])
+    monkeypatch.setattr(AppHandler, "lookup_property_facts", lambda self, address: None)
+    monkeypatch.setattr(AppHandler, "lookup_distance_to_city_center", lambda self, location: 1.4)
     monkeypatch.setattr(AppHandler, "respond_json", lambda self, payload: responses.append(payload))
 
     handler = object.__new__(AppHandler)
@@ -210,5 +239,57 @@ def test_geocode_route_returns_verified_location(monkeypatch):
             "latitude": "39.75",
             "longitude": "-104.99",
             "source": "U.S. Census Geocoder",
+            "suggestions": [
+                {
+                    "city": "Denver",
+                    "state": "CO",
+                    "zip_code": "80202",
+                    "matched_address": "100 MAIN ST, DENVER, CO, 80202",
+                    "latitude": "39.75",
+                    "longitude": "-104.99",
+                    "source": "U.S. Census Geocoder",
+                }
+            ],
+            "property_facts": {
+                "fields": {
+                    "distance_to_city_center_miles": {
+                        "value": "1.4",
+                        "source": "Calculated from U.S. Census Geocoder coordinates",
+                    }
+                },
+                "missing": {
+                    "square_feet": "Address-level square footage requires a property-record provider such as ATTOM.",
+                    "bedrooms": "Address-level bedrooms require a property-record provider such as ATTOM.",
+                    "bathrooms": "Address-level bathrooms require a property-record provider such as ATTOM.",
+                    "lot_size": "Address-level lot size requires a property-record provider such as ATTOM.",
+                    "year_built": "Address-level year built requires a property-record provider such as ATTOM.",
+                    "school_rating": "School rating is not provided by Zillow Research or Census Geocoder.",
+                    "crime_index": "Crime index is not provided by Zillow Research or Census Geocoder.",
+                },
+                "provider_configured": False,
+            },
+            "street_view_url": "",
         }
     ]
+
+
+def test_suggest_route_returns_address_options(monkeypatch):
+    responses = []
+    location = AddressLocation(
+        city="Austin",
+        state="TX",
+        zip_code="78751",
+        matched_address="5324 AVENUE F, AUSTIN, TX, 78751",
+    )
+
+    queries = []
+    monkeypatch.setattr(AppHandler, "lookup_address_matches", lambda self, address: queries.append(address) or [location])
+    monkeypatch.setattr(AppHandler, "respond_json", lambda self, payload: responses.append(payload))
+
+    handler = object.__new__(AppHandler)
+    handler.path = "/api/suggest?address=5324%20Av&city=Austin&state=TX&zip_code=78751"
+
+    handler.do_GET()
+
+    assert queries == ["5324 Av Austin TX 78751"]
+    assert responses[0]["suggestions"][0]["matched_address"] == "5324 AVENUE F, AUSTIN, TX, 78751"
