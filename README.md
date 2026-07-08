@@ -1,19 +1,41 @@
 # Real Estate Price Estimator
 
-A regression pipeline for estimating home sale prices from property, location, and school-quality features.
+A premium 3D web app and regression pipeline for estimating U.S. home sale prices from user-entered property facts, ZIP-level market signals, and public government location data.
 
-The project uses a scikit-learn `Pipeline` so categorical encoding, numeric scaling, model fitting, evaluation, and prediction stay reproducible.
+![Estimator hero](docs/images/estimator-hero.jpg)
 
-## Features
+## What It Does
 
-- Location fields: `city`, `neighborhood`, `zip_code`
-- Property fields: `square_feet`, `bedrooms`, `bathrooms`, `lot_size`, optional `year_built`
-- Local context: `school_rating`, `distance_to_city_center_miles`, `crime_index`
-- Optional free Zillow Research ZIP-level ZHVI market calibration
-- Premium 3D browser UI with a local bundled Three.js runtime
-- Trains a `HistGradientBoostingRegressor`
-- Saves the trained model artifact with preprocessing included
-- CLI commands for training, evaluation, and single-property prediction
+- Predicts a sale-price estimate with a scikit-learn regression pipeline.
+- Lets users enter `unknown` or leave most property facts blank.
+- Uses model imputation when square footage, bedrooms, bathrooms, lot size, year built, school rating, distance, or crime index are not known.
+- Uses a supplied address to look up city, state, ZIP, and map coordinates through the U.S. Census Geocoder.
+- Calibrates estimates with Zillow Research ZIP-level ZHVI data when available.
+- Optionally blends U.S. Census ACS median home value when `CENSUS_API_KEY` is configured.
+- Shows an OpenStreetMap area preview when coordinates are available.
+- Runs a premium animated 3D interface with a locally bundled Three.js module, so the scene does not depend on a CDN.
+
+![Estimate result](docs/images/estimate-result.jpg)
+
+## Data Sources
+
+The app is intentionally transparent about source quality:
+
+- **Zillow Research ZHVI**: free ZIP-level typical home value signal. This is not an address-level Zestimate.
+- **U.S. Census Geocoder**: free address-to-location lookup for city, state, ZIP, and coordinates.
+- **U.S. Census ACS 5-year B25077**: optional government median owner-occupied home value by ZIP Code Tabulation Area. Requires `CENSUS_API_KEY`.
+- **Trained regression model**: fills gaps using the model pipeline's categorical and numeric imputers.
+- **OpenStreetMap**: area map preview when the Census Geocoder returns coordinates.
+
+Public/free data generally does not include exact address-level beds, baths, square footage, lot size, or year built. Those fields can be entered when known; otherwise the app estimates using imputation and market context.
+
+Source references:
+
+- [Zillow Research Data](https://www.zillow.com/research/data/)
+- [Zillow Public Real Estate Metrics API](https://www.zillowgroup.com/developers/api/public-data/real-estate-metrics/)
+- [U.S. Census Geocoder](https://geocoding.geo.census.gov/)
+- [U.S. Census ACS 5-Year API](https://www.census.gov/data/developers/data-sets/acs-5year.html)
+- [OpenStreetMap](https://www.openstreetmap.org/)
 
 ## Quick Start
 
@@ -21,16 +43,8 @@ The project uses a scikit-learn `Pipeline` so categorical encoding, numeric scal
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-pytest
-```
-
-Run the full local verification predicate:
-
-```bash
 ./verify.sh
 ```
-
-If you do not install the package in editable mode, run CLI commands with `PYTHONPATH=src`.
 
 Run the browser app:
 
@@ -38,7 +52,7 @@ Run the browser app:
 PYTHONPATH=src python -m real_estate_price_estimator.web_app --port 8000
 ```
 
-Then open:
+Open:
 
 ```text
 http://127.0.0.1:8000
@@ -46,13 +60,26 @@ http://127.0.0.1:8000
 
 The first market-backed estimate may take longer because the app downloads and caches Zillow Research's free ZIP-level ZHVI CSV in `data/zillow_zhvi_zip.csv`.
 
-Generate a larger deterministic training sample for smoke testing:
+## Optional Census API
+
+The U.S. Census ACS API can add a government median-home-value signal. Set this only if you have a Census API key:
+
+```bash
+export CENSUS_API_KEY=your_key_here
+PYTHONPATH=src python -m real_estate_price_estimator.web_app --port 8000
+```
+
+Without a key, the app still uses the Census Geocoder and Zillow Research ZHVI.
+
+## Training
+
+Generate deterministic sample data for local smoke tests:
 
 ```bash
 python scripts/generate_sample_data.py
 ```
 
-Train with the included sample data:
+Train a model:
 
 ```bash
 python -m real_estate_price_estimator.cli train \
@@ -60,13 +87,13 @@ python -m real_estate_price_estimator.cli train \
   --model-out models/price_pipeline.joblib
 ```
 
-Predict one listing:
+Predict from the CLI:
 
 ```bash
 python -m real_estate_price_estimator.cli predict \
   --model models/price_pipeline.joblib \
   --city Austin \
-  --neighborhood "North Loop" \
+  --neighborhood unknown \
   --zip-code 78751 \
   --square-feet 1850 \
   --bedrooms 3 \
@@ -79,30 +106,29 @@ python -m real_estate_price_estimator.cli predict \
 
 ## Use Your Own Data
 
-Provide a CSV with these columns:
+Training CSV columns:
 
 ```text
 city,neighborhood,zip_code,square_feet,bedrooms,bathrooms,lot_size,year_built,school_rating,distance_to_city_center_miles,crime_index,price
 ```
 
-The `price` column is the training target and should be omitted only for prediction input.
+`price` is the training target. For web predictions, most inputs can be blank or `unknown`; for training, provide complete rows where possible so the model learns a stronger local relationship.
 
-For predictions, `year_built` is optional. Leave it blank when it is unknown; the model pipeline imputes a reasonable value from training data. Enter a year only when you know it or want to model a brand-new build scenario.
-
-To serve an app backed by your own model:
+## Verification
 
 ```bash
-PYTHONPATH=src python -m real_estate_price_estimator.cli train \
-  --data path/to/your_housing.csv \
-  --model-out models/local_market.joblib
-
-PYTHONPATH=src python -m real_estate_price_estimator.web_app \
-  --model models/local_market.joblib \
-  --port 8000
+./verify.sh
 ```
 
-## Notes
+Current verification covers:
 
-The sample dataset is synthetic and intended for development only. For production use, retrain with current local MLS, assessor, school district, and neighborhood market data.
+- Pipeline training and prediction.
+- Unknown/blank property field parsing.
+- Zillow Research ZHVI parsing and blending.
+- Optional Census ACS blending logic.
+- Address lookup data application.
+- Browser route rendering.
 
-Zillow integration uses the public Zillow Research ZHVI ZIP-level dataset. It is a market signal for the typical home value in a ZIP code, not an address-level Zestimate, and it does not include address-level year-built data. Proper attribution to Zillow is shown in the app.
+## Production Notes
+
+This is not an appraisal product. It is a market-aware estimator. Production use should retrain on current MLS, assessor, parcel, tax, school, and neighborhood data, and should use an approved property-record API if exact address-level facts are required.

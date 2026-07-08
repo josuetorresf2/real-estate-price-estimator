@@ -9,6 +9,10 @@
 - `python -m real_estate_price_estimator.cli predict --model models/price_pipeline.joblib ...` returns a positive predicted price.
 - `python -m real_estate_price_estimator.web_app --port 8000` serves a browser form for non-technical users.
 - `/predict` blends the trained model with Zillow Research ZIP-level ZHVI when the ZIP appears in the public dataset.
+- `/predict` optionally blends U.S. Census ACS median owner-occupied value when `CENSUS_API_KEY` is configured.
+- Address lookup uses the U.S. Census Geocoder to fill city, state, ZIP, and map coordinates when available.
+- Unknown property fields are allowed and handled by model imputation.
+- Result pages can show an OpenStreetMap area preview when address coordinates are available.
 - `year_built` is optional for prediction; missing values are handled by the model pipeline imputer.
 - `/static/vendor/three.module.js` serves the local Three.js module so the 3D scene does not rely on `unpkg.com`.
 - `./verify.sh` passes from the project root.

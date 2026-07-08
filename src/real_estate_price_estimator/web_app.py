@@ -9,7 +9,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs
 
-from .market_data import ensure_zhvi_csv, latest_zhvi_for_zip, market_calibrated_estimate
+from .market_data import (
+    census_home_value_for_zip,
+    ensure_zhvi_csv,
+    geocode_address,
+    latest_zhvi_for_zip,
+    market_calibrated_estimate,
+)
 from .pipeline import load_model, load_training_data, predict_price, save_model, train
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -19,23 +25,25 @@ DEFAULT_ZHVI_PATH = PROJECT_ROOT / "data" / "zillow_zhvi_zip.csv"
 STATIC_ROOT = PROJECT_ROOT / "static"
 
 DEFAULT_FORM_VALUES = {
-    "address": "1201 Market Signal Dr",
-    "city": "Austin",
-    "neighborhood": "North Loop",
+    "address": "",
+    "city": "",
+    "state": "",
+    "neighborhood": "",
     "zip_code": "78751",
-    "square_feet": "1850",
-    "bedrooms": "3",
-    "bathrooms": "2",
-    "lot_size": "0.18",
+    "square_feet": "",
+    "bedrooms": "",
+    "bathrooms": "",
+    "lot_size": "",
     "year_built": "",
-    "school_rating": "8.6",
-    "distance_to_city_center_miles": "4.2",
-    "crime_index": "31",
+    "school_rating": "",
+    "distance_to_city_center_miles": "",
+    "crime_index": "",
 }
 
 FIELD_LABELS = {
     "address": "Address",
     "city": "City",
+    "state": "State",
     "neighborhood": "Neighborhood",
     "zip_code": "ZIP code",
     "square_feet": "Square feet",
@@ -58,7 +66,22 @@ NUMERIC_FIELDS = {
     "distance_to_city_center_miles": float,
     "crime_index": float,
 }
-OPTIONAL_FIELDS = {"address", "year_built"}
+FEATURE_FIELDS = {"city", "neighborhood", "zip_code", *NUMERIC_FIELDS}
+OPTIONAL_FIELDS = {
+    "address",
+    "city",
+    "state",
+    "neighborhood",
+    "zip_code",
+    "square_feet",
+    "bedrooms",
+    "bathrooms",
+    "lot_size",
+    "year_built",
+    "school_rating",
+    "distance_to_city_center_miles",
+    "crime_index",
+}
 
 
 def ensure_model(model_path: Path = DEFAULT_MODEL_PATH, data_path: Path = DEFAULT_DATA_PATH):
@@ -77,10 +100,10 @@ def parse_form(body: str) -> tuple[dict[str, object], dict[str, str], list[str]]
     features: dict[str, object] = {}
 
     for field, value in values.items():
-        if field in OPTIONAL_FIELDS and not value:
-            features[field] = None
+        if field in {"address", "state"}:
             continue
-        if field == "address":
+        if field in OPTIONAL_FIELDS and value.lower() in {"", "unknown", "unkown", "uknown", "n/a", "na"}:
+            features[field] = None if field in NUMERIC_FIELDS else ""
             continue
         if not value:
             errors.append(f"{FIELD_LABELS[field]} is required.")
@@ -90,7 +113,7 @@ def parse_form(body: str) -> tuple[dict[str, object], dict[str, str], list[str]]
                 features[field] = NUMERIC_FIELDS[field](value)
             except ValueError:
                 errors.append(f"{FIELD_LABELS[field]} must be a number.")
-        else:
+        elif field in FEATURE_FIELDS:
             features[field] = value
 
     return features, values, errors
@@ -100,12 +123,53 @@ def format_currency(value: float) -> str:
     return f"${value:,.0f}"
 
 
+def apply_address_location(values: dict[str, str], features: dict[str, object], location) -> None:
+    if location is None:
+        return
+    if not values.get("city") and location.city:
+        values["city"] = location.city
+        features["city"] = location.city
+    if not values.get("state") and location.state:
+        values["state"] = location.state
+    if not values.get("zip_code") and location.zip_code:
+        values["zip_code"] = location.zip_code
+        features["zip_code"] = location.zip_code
+
+
+def finalize_prediction_features(features: dict[str, object]) -> dict[str, object]:
+    finalized = features.copy()
+    for field in ("city", "neighborhood", "zip_code"):
+        if not finalized.get(field):
+            finalized[field] = "Unknown"
+    for field in NUMERIC_FIELDS:
+        finalized.setdefault(field, None)
+    return finalized
+
+
+def map_preview(address_location: object | None) -> str:
+    if address_location is None or address_location.latitude is None or address_location.longitude is None:
+        return ""
+    lat = address_location.latitude
+    lon = address_location.longitude
+    marker = f"{lat},{lon},pm2rdm"
+    bbox = f"{lon - 0.012},{lat - 0.008},{lon + 0.012},{lat + 0.008}"
+    map_url = f"https://www.openstreetmap.org/export/embed.html?bbox={bbox}&layer=mapnik&marker={marker}"
+    return f"""
+    <div class="map-preview">
+      <iframe title="Mapped address area" src="{html.escape(map_url)}" loading="lazy"></iframe>
+      <p class="source-note">Map preview: OpenStreetMap area context. This is not a house photo or exterior rendering.</p>
+    </div>
+    """
+
+
 def render_page(
     values: dict[str, str] | None = None,
     *,
     prediction: float | None = None,
     model_prediction: float | None = None,
     market_signal: object | None = None,
+    census_signal: object | None = None,
+    address_location: object | None = None,
     errors: list[str] | None = None,
 ) -> str:
     form_values = values or DEFAULT_FORM_VALUES
@@ -122,14 +186,28 @@ def render_page(
             </dl>
             <p class="source-note">Market signal: Zillow Research ZHVI. This is ZIP-level typical home value data, not an address-level Zestimate.</p>
             """
-        elif model_prediction is not None:
+        if census_signal is not None:
+            market_note += f"""
+            <dl class="market-card">
+              <div><dt>Government signal</dt><dd>{format_currency(census_signal.median_home_value)}</dd></div>
+              <div><dt>Geography</dt><dd>{html.escape(census_signal.name)}</dd></div>
+              <div><dt>Dataset</dt><dd>ACS {html.escape(census_signal.year)} 5-year</dd></div>
+            </dl>
+            <p class="source-note">Government signal: U.S. Census ACS B25077 median owner-occupied home value. Requires CENSUS_API_KEY when enabled.</p>
+            """
+        if address_location is not None:
+            market_note += f"""
+            <p class="source-note">Address lookup: {html.escape(address_location.matched_address)} via {html.escape(address_location.source)}.</p>
+            """
+        if not market_note and model_prediction is not None:
             market_note = """
-            <p class="source-note">No Zillow Research ZIP signal was found for this ZIP, so this result uses the trained feature model only.</p>
+            <p class="source-note">No Zillow or Census pricing signal was found for this ZIP, so this result uses the trained feature model only.</p>
             """
         result = f"""
         <section class="result" aria-live="polite">
           <span>Market-calibrated estimate</span>
           <strong>{format_currency(prediction)}</strong>
+          {map_preview(address_location)}
           {f'<p class="model-note">Feature model: {format_currency(model_prediction)}</p>' if model_prediction is not None else ''}
           {market_note}
         </section>
@@ -138,7 +216,7 @@ def render_page(
         result = """
         <section class="empty-result" aria-live="polite">
           <strong>Live market estimate</strong>
-          <p class="note">Enter property signals, then blend the trained model with Zillow Research ZIP-level ZHVI when available.</p>
+          <p class="note">Enter an address or ZIP. Unknown property facts are allowed and handled by model imputation when public data does not include them.</p>
         </section>
         """
 
@@ -479,6 +557,18 @@ def render_page(
       font-weight: 700;
       color: white;
     }}
+    .map-preview {{
+      display: grid;
+      gap: 8px;
+      margin: 8px 0;
+    }}
+    .map-preview iframe {{
+      width: 100%;
+      height: 180px;
+      border: 1px solid rgba(215, 226, 234, 0.14);
+      border-radius: 8px;
+      filter: grayscale(0.25) contrast(1.05) brightness(0.88);
+    }}
     .field-help {{
       color: var(--muted);
       font-size: 0.75rem;
@@ -588,7 +678,6 @@ def render_page(
     </nav>
     <header>
       <div>
-        <span class="eyebrow">Cosmos interface</span>
         <h1 class="hero-heading">Real Estate Price Estimator</h1>
       </div>
       <p>Navigate property signals through a premium 3D pricing interface.</p>
@@ -777,9 +866,11 @@ def render_page(
 
 def input_attributes(field: str) -> str:
     if field == "year_built":
-        return 'type="number" min="1800" max="2026" step="1" placeholder="Leave blank unless known"'
-    if field in {"address", "city", "neighborhood", "zip_code"}:
+        return 'type="text" inputmode="numeric" placeholder="Leave blank unless known"'
+    if field in {"address", "city", "state", "neighborhood", "zip_code"}:
         return 'type="text"'
+    if field in OPTIONAL_FIELDS:
+        return 'type="text" inputmode="decimal" placeholder="unknown"'
     return 'type="number" step="0.01"'
 
 
@@ -787,7 +878,9 @@ def field_help(field: str) -> str:
     if field == "year_built":
         return '<small class="field-help">Leave blank if unknown. Enter 2026 for a brand-new build scenario.</small>'
     if field == "address":
-        return '<small class="field-help">Optional. Free Zillow data is ZIP-level, not address-level.</small>'
+        return '<small class="field-help">Optional. Used to look up city, state, ZIP, and map area through the U.S. Census Geocoder.</small>'
+    if field in {"neighborhood", "square_feet", "bedrooms", "bathrooms", "lot_size", "school_rating", "distance_to_city_center_miles", "crime_index"}:
+        return '<small class="field-help">Type unknown or leave blank if public data does not have it.</small>'
     return ""
 
 
@@ -817,23 +910,35 @@ class AppHandler(BaseHTTPRequestHandler):
         prediction = None
         model_prediction = None
         market_signal = None
+        census_signal = None
+        address_location = None
         if not errors:
             try:
-                model_prediction = predict_price(self.model, features)
-                market_signal = self.lookup_market_signal(str(values.get("zip_code", "")))
-                prediction = market_calibrated_estimate(model_prediction, market_signal)
+                if values.get("address") and (not values.get("city") or not values.get("state") or not values.get("zip_code")):
+                    address_location = self.lookup_address(values["address"])
+                    apply_address_location(values, features, address_location)
+                prediction_features = finalize_prediction_features(features)
+                model_prediction = predict_price(self.model, prediction_features)
+                lookup_zip = str(values.get("zip_code", "") or prediction_features.get("zip_code", ""))
+                market_signal = self.lookup_market_signal(lookup_zip)
+                census_signal = self.lookup_census_signal(lookup_zip)
+                prediction = market_calibrated_estimate(model_prediction, market_signal, census_signal)
             except ValueError as exc:
                 errors.append(str(exc))
             except OSError:
-                model_prediction = predict_price(self.model, features)
+                prediction_features = finalize_prediction_features(features)
+                model_prediction = predict_price(self.model, prediction_features)
                 prediction = model_prediction
                 market_signal = None
+                census_signal = None
         self.respond_html(
             render_page(
                 values,
                 prediction=prediction,
                 model_prediction=model_prediction,
                 market_signal=market_signal,
+                census_signal=census_signal,
+                address_location=address_location,
                 errors=errors,
             )
         )
@@ -841,6 +946,12 @@ class AppHandler(BaseHTTPRequestHandler):
     def lookup_market_signal(self, zip_code: str):
         zhvi_path = ensure_zhvi_csv(self.zhvi_path)
         return latest_zhvi_for_zip(zip_code, zhvi_path)
+
+    def lookup_census_signal(self, zip_code: str):
+        return census_home_value_for_zip(zip_code)
+
+    def lookup_address(self, address: str):
+        return geocode_address(address)
 
     def respond_html(self, body: str, status: HTTPStatus = HTTPStatus.OK) -> None:
         encoded = body.encode("utf-8")
