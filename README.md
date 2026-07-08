@@ -17,7 +17,7 @@ A premium 3D web app and regression pipeline for estimating U.S. home sale price
 - Calibrates estimates with Zillow Research ZIP-level ZHVI data when available.
 - Optionally blends U.S. Census ACS median home value when `CENSUS_API_KEY` is configured.
 - Optionally shows real exterior context through Google Street View Static API when `GOOGLE_STREET_VIEW_API_KEY` is configured.
-- Shows an Engrain-inspired property map panel with a selected-property marker, market layers, source badges, and OpenStreetMap area context when coordinates are available.
+- Shows an Engrain-inspired property map panel with a selected-property marker, market layers, source badges, Mapbox satellite-streets imagery when `MAPBOX_ACCESS_TOKEN` is configured, and OpenStreetMap fallback context.
 - Runs a premium animated 3D interface with a locally bundled Three.js module, so the scene does not depend on a CDN.
 
 ![Estimate result](docs/images/estimate-result.jpg)
@@ -32,6 +32,7 @@ The app is intentionally transparent about source quality:
 - **ATTOM Property API**: optional address-level property facts such as living area, rooms, lot size, and year built. Requires `ATTOM_API_KEY`.
 - **Geoapify Address Autocomplete**: optional real address suggestions for partial user input. Requires `GEOAPIFY_API_KEY`.
 - **Google Street View Static API**: optional real exterior/street-level imagery. Requires `GOOGLE_STREET_VIEW_API_KEY`.
+- **Mapbox Static Images API**: optional satellite-streets map imagery. Requires `MAPBOX_ACCESS_TOKEN`.
 - **Trained regression model**: used only when core property facts are available; otherwise the app returns a public-data market baseline.
 - **OpenStreetMap**: area map preview when the Census Geocoder returns coordinates.
 - **Engrain/SightMap-inspired UX**: the app does not use Engrain's private platform, but borrows the product idea of an interactive property map with visual context and data layers.
@@ -53,6 +54,7 @@ Source references:
 - [ATTOM Property API](https://api.developer.attomdata.com/)
 - [Geoapify Address Autocomplete API](https://apidocs.geoapify.com/docs/geocoding/address-autocomplete/)
 - [Google Street View Static API](https://developers.google.com/maps/documentation/streetview)
+- [Mapbox Static Images API](https://docs.mapbox.com/api/maps/static-images/)
 - [OpenStreetMap](https://www.openstreetmap.org/)
 
 ## Quick Start
@@ -97,10 +99,11 @@ Address-level facts and imagery are provider-backed because free Zillow Research
 export ATTOM_API_KEY=your_attom_key_here
 export GEOAPIFY_API_KEY=your_geoapify_key_here
 export GOOGLE_STREET_VIEW_API_KEY=your_google_maps_key_here
+export MAPBOX_ACCESS_TOKEN=your_mapbox_token_here
 PYTHONPATH=src python -m real_estate_price_estimator.web_app --port 8000
 ```
 
-When `GEOAPIFY_API_KEY` is set, partial address input can return real autocomplete suggestions. When `ATTOM_API_KEY` is set, the live address lookup can fill square feet, bedrooms, bathrooms, lot size, and year built from property records. When `GOOGLE_STREET_VIEW_API_KEY` is set, result pages can show real Street View exterior context for the verified address.
+When `GEOAPIFY_API_KEY` is set, partial address input can return real autocomplete suggestions. When `ATTOM_API_KEY` is set, the live address lookup can fill square feet, bedrooms, bathrooms, lot size, and year built from property records. When `GOOGLE_STREET_VIEW_API_KEY` is set, result pages can show real Street View exterior context for the verified address. When `MAPBOX_ACCESS_TOKEN` is set, live and result maps use Mapbox satellite-streets imagery; otherwise the app falls back to OpenStreetMap.
 
 ## Docker
 
@@ -126,7 +129,7 @@ Deploy steps:
 1. Push this repository to GitHub.
 2. In Render, create a new Blueprint from the repository.
 3. Select the free web service plan.
-4. Add optional secret environment variables: `CENSUS_API_KEY`, `GEOAPIFY_API_KEY`, `ATTOM_API_KEY`, and `GOOGLE_STREET_VIEW_API_KEY`.
+4. Add optional secret environment variables: `CENSUS_API_KEY`, `GEOAPIFY_API_KEY`, `ATTOM_API_KEY`, `GOOGLE_STREET_VIEW_API_KEY`, and `MAPBOX_ACCESS_TOKEN`.
 5. Deploy. Render will build the Docker image and publish the app on its generated `onrender.com` URL.
 
 ## Training

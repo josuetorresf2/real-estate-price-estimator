@@ -17,3 +17,5 @@ services:
         sync: false
       - key: GOOGLE_STREET_VIEW_API_KEY
         sync: false
+      - key: MAPBOX_ACCESS_TOKEN
+        sync: false

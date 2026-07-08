@@ -18,6 +18,7 @@ GEOAPIFY_AUTOCOMPLETE_URL = "https://api.geoapify.com/v1/geocode/autocomplete"
 CITY_CENTERS = {
     ("AUSTIN", "TX"): (30.2672, -97.7431),
     ("DENVER", "CO"): (39.7392, -104.9903),
+    ("COLORADO SPRINGS", "CO"): (38.8339, -104.8214),
     ("ATLANTA", "GA"): (33.7490, -84.3880),
     ("WASHINGTON", "DC"): (38.9072, -77.0369),
 }

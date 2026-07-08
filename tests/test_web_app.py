@@ -258,6 +258,7 @@ def test_geocode_route_returns_verified_location(monkeypatch):
                     }
                 },
                 "missing": {
+                    "neighborhood": "Neighborhood is not returned by Zillow Research or Census Geocoder.",
                     "square_feet": "Address-level square footage requires a property-record provider such as ATTOM.",
                     "bedrooms": "Address-level bedrooms require a property-record provider such as ATTOM.",
                     "bathrooms": "Address-level bathrooms require a property-record provider such as ATTOM.",
@@ -269,6 +270,7 @@ def test_geocode_route_returns_verified_location(monkeypatch):
                 "provider_configured": False,
             },
             "street_view_url": "",
+            "mapbox_static_url": "",
         }
     ]
 

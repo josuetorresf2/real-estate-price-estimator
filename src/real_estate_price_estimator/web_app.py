@@ -73,7 +73,15 @@ NUMERIC_FIELDS = {
     "crime_index": float,
 }
 MODEL_REQUIRED_FACTS = {"square_feet", "bedrooms", "bathrooms", "lot_size"}
-ADDRESS_ENRICHMENT_FIELDS = {"square_feet", "bedrooms", "bathrooms", "lot_size", "year_built", "distance_to_city_center_miles"}
+ADDRESS_ENRICHMENT_FIELDS = {
+    "neighborhood",
+    "square_feet",
+    "bedrooms",
+    "bathrooms",
+    "lot_size",
+    "year_built",
+    "distance_to_city_center_miles",
+}
 FEATURE_FIELDS = {"city", "neighborhood", "zip_code", *NUMERIC_FIELDS}
 OPTIONAL_FIELDS = {
     "address",
@@ -270,6 +278,12 @@ def map_preview(
     marker = f"{lat},{lon},pm2rdm"
     bbox = f"{lon - 0.018},{lat - 0.012},{lon + 0.018},{lat + 0.012}"
     map_url = f"https://www.openstreetmap.org/export/embed.html?bbox={bbox}&layer=mapnik&marker={marker}"
+    image_url = mapbox_static_url(address_location)
+    map_media = (
+        f'<img src="{html.escape(image_url)}" alt="Satellite streets map near the verified address" loading="lazy">'
+        if image_url
+        else f'<iframe title="Mapped address area" src="{html.escape(map_url)}" loading="lazy"></iframe>'
+    )
     source_items = ["Census geocoded address", "OpenStreetMap context"]
     if market_signal is not None:
         source_items.append("Zillow ZIP value layer")
@@ -288,7 +302,7 @@ def map_preview(
     return f"""
     <section class="property-map" aria-label="Property map intelligence">
       <div class="map-stage">
-        <iframe title="Mapped address area" src="{html.escape(map_url)}" loading="lazy"></iframe>
+        {map_media}
         <div class="map-pin" aria-hidden="true"><span></span></div>
         <div class="map-radar" aria-hidden="true"></div>
       </div>
@@ -311,15 +325,24 @@ def map_preview(
 def street_view_preview(address_location: object | None) -> str:
     image_url = street_view_url(address_location)
     if not image_url:
-        return """
-        <p class="source-note">House image: configure GOOGLE_STREET_VIEW_API_KEY to show real Google Street View imagery when available.</p>
-        """
+        return ""
     return f"""
     <figure class="house-preview">
       <img src="{html.escape(image_url)}" alt="Street View image near the verified address" loading="lazy">
       <figcaption>Real exterior context from Google Street View Static API when imagery is available.</figcaption>
     </figure>
     """
+
+
+def mapbox_static_url(address_location: object | None) -> str:
+    token = os.getenv("MAPBOX_ACCESS_TOKEN")
+    if not token or address_location is None or address_location.latitude is None or address_location.longitude is None:
+        return ""
+    lat = address_location.latitude
+    lon = address_location.longitude
+    marker = f"pin-s+be4c00({lon},{lat})"
+    query = urlencode({"access_token": token, "attribution": "true", "logo": "true"})
+    return f"https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/{marker}/{lon},{lat},16,0,55/640x360@2x?{query}"
 
 
 def street_view_url(address_location: object | None) -> str:
@@ -356,6 +379,7 @@ def property_fact_payload(facts, distance_miles: float | None) -> dict[str, obje
             "source": "Calculated from U.S. Census Geocoder coordinates",
         }
     missing = {
+        "neighborhood": "Neighborhood is not returned by Zillow Research or Census Geocoder.",
         "square_feet": "Address-level square footage requires a property-record provider such as ATTOM.",
         "bedrooms": "Address-level bedrooms require a property-record provider such as ATTOM.",
         "bathrooms": "Address-level bathrooms require a property-record provider such as ATTOM.",
@@ -462,6 +486,10 @@ def render_page(
         <section class="empty-result" aria-live="polite">
           <strong>Live market estimate</strong>
           <p class="note">Enter an address or ZIP. Unknown property facts are allowed and handled by model imputation when public data does not include them.</p>
+          <div class="live-context" data-live-context>
+            <span>Address intelligence</span>
+            <p>Verify an address to load the property map, ZIP, city/state, distance, and data-source status.</p>
+          </div>
         </section>
         """
 
@@ -838,10 +866,12 @@ def render_page(
       font-size: 0.75rem;
       line-height: 1.25;
     }}
-    .map-stage iframe {{
+    .map-stage iframe,
+    .map-stage img {{
       width: 100%;
       height: 230px;
       border: 0;
+      object-fit: cover;
       filter: grayscale(0.25) contrast(1.05) brightness(0.88);
     }}
     .map-pin {{
@@ -1005,6 +1035,61 @@ def render_page(
       font-weight: 900;
       text-transform: uppercase;
     }}
+    .live-context {{
+      display: grid;
+      gap: 8px;
+      border: 1px solid rgba(215, 226, 234, 0.13);
+      border-radius: 8px;
+      background: rgba(215, 226, 234, 0.055);
+      padding: 12px;
+      min-height: 120px;
+    }}
+    .live-context span {{
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }}
+    .live-context p {{
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.35;
+    }}
+    .live-map {{
+      display: grid;
+      gap: 8px;
+    }}
+    .live-map iframe,
+    .live-map img {{
+      width: 100%;
+      height: 190px;
+      border: 1px solid rgba(215, 226, 234, 0.14);
+      border-radius: 8px;
+      object-fit: cover;
+      filter: grayscale(0.25) contrast(1.05) brightness(0.88);
+    }}
+    .live-map dl {{
+      display: grid;
+      gap: 7px;
+      margin: 0;
+    }}
+    .live-map div {{
+      border-top: 1px solid rgba(215, 226, 234, 0.1);
+      padding-top: 7px;
+    }}
+    .live-map dt {{
+      color: var(--muted);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+    }}
+    .live-map dd {{
+      margin: 2px 0 0;
+      color: white;
+      font-size: 0.86rem;
+      font-weight: 700;
+      line-height: 1.25;
+    }}
     .errors {{
       margin: 0 0 10px;
       border: 1px solid #fed7aa;
@@ -1122,6 +1207,7 @@ def render_page(
     const zipInput = document.querySelector('input[name="zip_code"]');
     const addressStatus = document.querySelector("[data-address-status]");
     const addressSuggestions = document.querySelector("[data-address-suggestions]");
+    const liveContext = document.querySelector("[data-live-context]");
     let addressTimer;
     let addressController;
 
@@ -1142,6 +1228,18 @@ def render_page(
       element.dataset.state = state;
     }}
 
+    function maybeSetUnknown(field) {{
+      const input = fieldInput(field);
+      if (!input) return;
+      if (!input.value.trim()) input.value = "unknown";
+    }}
+
+    function escapeText(value) {{
+      const element = document.createElement("span");
+      element.textContent = value || "";
+      return element.innerHTML;
+    }}
+
     function applyEnrichment(payload) {{
       const fields = payload.property_facts?.fields || {{}};
       const missing = payload.property_facts?.missing || {{}};
@@ -1155,8 +1253,36 @@ def render_page(
         setFieldStatus(field, detail.source, "filled");
       }});
       Object.entries(missing).forEach(([field, message]) => {{
+        maybeSetUnknown(field);
         setFieldStatus(field, message, "missing");
       }});
+    }}
+
+    function renderLiveContext(payload) {{
+      if (!liveContext || !payload.matched) return;
+      const lat = Number(payload.latitude);
+      const lon = Number(payload.longitude);
+      const hasCoords = Number.isFinite(lat) && Number.isFinite(lon);
+      const map = payload.mapbox_static_url
+        ? `<img alt="Satellite streets map near the verified address" loading="lazy" src="${{escapeText(payload.mapbox_static_url)}}">`
+        : hasCoords
+        ? `<iframe title="Live mapped address area" loading="lazy" src="https://www.openstreetmap.org/export/embed.html?bbox=${{lon - 0.018}},${{lat - 0.012}},${{lon + 0.018}},${{lat + 0.012}}&layer=mapnik&marker=${{lat}},${{lon}},pm2rdm"></iframe>`
+        : "";
+      const fields = payload.property_facts?.fields || {{}};
+      const distance = fields.distance_to_city_center_miles?.value || "Not available";
+      const filled = Object.keys(fields).filter((field) => field !== "distance_to_city_center_miles").length;
+      liveContext.innerHTML = `
+        <span>Address intelligence</span>
+        <div class="live-map">
+          ${{map}}
+          <dl>
+            <div><dt>Verified address</dt><dd>${{escapeText(payload.matched_address)}}</dd></div>
+            <div><dt>Location</dt><dd>${{escapeText(payload.city)}}, ${{escapeText(payload.state)}} ${{escapeText(payload.zip_code)}}</dd></div>
+            <div><dt>Miles to city center</dt><dd>${{escapeText(distance)}}</dd></div>
+            <div><dt>Property facts filled</dt><dd>${{filled}} provider-backed fields</dd></div>
+          </dl>
+        </div>
+      `;
     }}
 
     function renderSuggestions(suggestions) {{
@@ -1220,6 +1346,7 @@ def render_page(
         stateInput.value = payload.state || stateInput.value;
         zipInput.value = payload.zip_code || zipInput.value;
         applyEnrichment(payload);
+        renderLiveContext(payload);
         renderSuggestions(payload.suggestions || []);
         setAddressStatus(`Verified: ${{payload.matched_address}}`, "matched");
       }} catch (error) {{
@@ -1590,6 +1717,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 "suggestions": [location_payload(match) for match in suggestions[:5]],
                 "property_facts": property_fact_payload(property_facts, distance_miles),
                 "street_view_url": street_view_url(location),
+                "mapbox_static_url": mapbox_static_url(location),
             }
         )
 
