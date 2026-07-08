@@ -6,8 +6,9 @@ import json
 import mimetypes
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlparse
 
 from .market_data import (
     census_home_value_for_zip,
@@ -66,6 +67,7 @@ NUMERIC_FIELDS = {
     "distance_to_city_center_miles": float,
     "crime_index": float,
 }
+MODEL_REQUIRED_FACTS = {"square_feet", "bedrooms", "bathrooms", "lot_size"}
 FEATURE_FIELDS = {"city", "neighborhood", "zip_code", *NUMERIC_FIELDS}
 OPTIONAL_FIELDS = {
     "address",
@@ -123,6 +125,17 @@ def format_currency(value: float) -> str:
     return f"${value:,.0f}"
 
 
+@dataclass(frozen=True)
+class EstimateDecision:
+    estimate: float | None
+    low: float | None
+    high: float | None
+    method: str
+    confidence: str
+    known_fact_count: int
+    used_model: bool
+
+
 def apply_address_location(values: dict[str, str], features: dict[str, object], location) -> None:
     if location is None:
         return
@@ -144,6 +157,86 @@ def finalize_prediction_features(features: dict[str, object]) -> dict[str, objec
     for field in NUMERIC_FIELDS:
         finalized.setdefault(field, None)
     return finalized
+
+
+def known_property_fact_count(features: dict[str, object]) -> int:
+    return sum(1 for field in NUMERIC_FIELDS if features.get(field) is not None)
+
+
+def should_use_model(features: dict[str, object]) -> bool:
+    return all(features.get(field) is not None for field in MODEL_REQUIRED_FACTS)
+
+
+def decide_estimate(
+    *,
+    model_prediction: float | None,
+    market_signal: object | None,
+    census_signal: object | None,
+    known_fact_count: int,
+) -> EstimateDecision:
+    has_zillow = market_signal is not None
+    has_census = census_signal is not None
+
+    if model_prediction is not None:
+        estimate = market_calibrated_estimate(model_prediction, market_signal, census_signal)
+        band = 0.08 if has_zillow else 0.14
+        confidence = "High" if has_zillow and known_fact_count >= 6 else "Medium"
+        method = "Property model calibrated with public market data" if has_zillow or has_census else "Property model only"
+        return EstimateDecision(
+            estimate=estimate,
+            low=estimate * (1 - band),
+            high=estimate * (1 + band),
+            method=method,
+            confidence=confidence,
+            known_fact_count=known_fact_count,
+            used_model=True,
+        )
+
+    if has_zillow and has_census:
+        estimate = market_signal.typical_home_value * 0.75 + census_signal.median_home_value * 0.25
+        return EstimateDecision(
+            estimate=estimate,
+            low=estimate * 0.86,
+            high=estimate * 1.14,
+            method="Public-data market baseline: Zillow ZHVI plus Census ACS",
+            confidence="Medium",
+            known_fact_count=known_fact_count,
+            used_model=False,
+        )
+
+    if has_zillow:
+        estimate = market_signal.typical_home_value
+        return EstimateDecision(
+            estimate=estimate,
+            low=estimate * 0.84,
+            high=estimate * 1.16,
+            method="Public-data market baseline: Zillow Research ZHVI",
+            confidence="Medium",
+            known_fact_count=known_fact_count,
+            used_model=False,
+        )
+
+    if has_census:
+        estimate = census_signal.median_home_value
+        return EstimateDecision(
+            estimate=estimate,
+            low=estimate * 0.78,
+            high=estimate * 1.22,
+            method="Government market baseline: U.S. Census ACS",
+            confidence="Low",
+            known_fact_count=known_fact_count,
+            used_model=False,
+        )
+
+    return EstimateDecision(
+        estimate=None,
+        low=None,
+        high=None,
+        method="No public market signal found",
+        confidence="Unavailable",
+        known_fact_count=known_fact_count,
+        used_model=False,
+    )
 
 
 def map_preview(address_location: object | None) -> str:
@@ -170,12 +263,23 @@ def render_page(
     market_signal: object | None = None,
     census_signal: object | None = None,
     address_location: object | None = None,
+    decision: EstimateDecision | None = None,
     errors: list[str] | None = None,
 ) -> str:
     form_values = values or DEFAULT_FORM_VALUES
     error_items = "".join(f"<li>{html.escape(error)}</li>" for error in errors or [])
     result = ""
     if prediction is not None:
+        decision_note = ""
+        if decision is not None:
+            decision_note = f"""
+            <dl class="market-card">
+              <div><dt>Method</dt><dd>{html.escape(decision.method)}</dd></div>
+              <div><dt>Confidence</dt><dd>{html.escape(decision.confidence)}</dd></div>
+              <div><dt>Estimated range</dt><dd>{format_currency(decision.low)} - {format_currency(decision.high)}</dd></div>
+              <div><dt>Known property facts</dt><dd>{decision.known_fact_count} of {len(NUMERIC_FIELDS)}</dd></div>
+            </dl>
+            """
         market_note = ""
         if market_signal is not None:
             market_note = f"""
@@ -208,6 +312,7 @@ def render_page(
           <span>Market-calibrated estimate</span>
           <strong>{format_currency(prediction)}</strong>
           {map_preview(address_location)}
+          {decision_note}
           {f'<p class="model-note">Feature model: {format_currency(model_prediction)}</p>' if model_prediction is not None else ''}
           {market_note}
         </section>
@@ -226,6 +331,7 @@ def render_page(
           <span>{html.escape(label)}</span>
           <input name="{field}" value="{html.escape(form_values.get(field, ''))}" {input_attributes(field)}>
           {field_help(field)}
+          {address_status(field)}
         </label>
         """
         for field, label in FIELD_LABELS.items()
@@ -574,6 +680,18 @@ def render_page(
       font-size: 0.75rem;
       line-height: 1.25;
     }}
+    .address-status {{
+      min-height: 1rem;
+      color: var(--muted);
+      font-size: 0.75rem;
+      line-height: 1.25;
+    }}
+    .address-status[data-state="matched"] {{
+      color: #b8f7c5;
+    }}
+    .address-status[data-state="error"] {{
+      color: var(--warn);
+    }}
     .result span {{
       color: var(--muted);
       font-weight: 700;
@@ -709,6 +827,56 @@ def render_page(
       button.textContent = "Loading market data";
       document.body.classList.add("loading");
     }});
+
+    const addressInput = document.querySelector('input[name="address"]');
+    const cityInput = document.querySelector('input[name="city"]');
+    const stateInput = document.querySelector('input[name="state"]');
+    const zipInput = document.querySelector('input[name="zip_code"]');
+    const addressStatus = document.querySelector("[data-address-status]");
+    let addressTimer;
+    let addressController;
+
+    function setAddressStatus(message, state = "") {{
+      if (!addressStatus) return;
+      addressStatus.textContent = message;
+      addressStatus.dataset.state = state;
+    }}
+
+    async function verifyAddress() {{
+      const address = addressInput.value.trim();
+      if (address.length < 8) {{
+        setAddressStatus("Type a full U.S. address to verify city, state, and ZIP.");
+        return;
+      }}
+      if (addressController) addressController.abort();
+      addressController = new AbortController();
+      setAddressStatus("Checking Census Geocoder...");
+      try {{
+        const response = await fetch(`/api/geocode?address=${{encodeURIComponent(address)}}`, {{
+          signal: addressController.signal,
+        }});
+        const payload = await response.json();
+        if (!payload.matched) {{
+          setAddressStatus("No verified Census match yet. Add street, city, and state.", "error");
+          return;
+        }}
+        cityInput.value = payload.city || cityInput.value;
+        stateInput.value = payload.state || stateInput.value;
+        zipInput.value = payload.zip_code || zipInput.value;
+        setAddressStatus(`Verified: ${{payload.matched_address}}`, "matched");
+      }} catch (error) {{
+        if (error.name === "AbortError") return;
+        setAddressStatus("Address verification is unavailable right now.", "error");
+      }}
+    }}
+
+    if (addressInput) {{
+      addressInput.addEventListener("input", () => {{
+        clearTimeout(addressTimer);
+        addressTimer = setTimeout(verifyAddress, 650);
+      }});
+      setAddressStatus("Type a full U.S. address to verify city, state, and ZIP.");
+    }}
 
     const canvas = document.getElementById("cityScene");
     const renderer = new THREE.WebGLRenderer({{ canvas, antialias: true, alpha: true }});
@@ -884,18 +1052,29 @@ def field_help(field: str) -> str:
     return ""
 
 
+def address_status(field: str) -> str:
+    if field == "address":
+        return '<small class="address-status" data-address-status></small>'
+    return ""
+
+
 class AppHandler(BaseHTTPRequestHandler):
     model = None
     zhvi_path = DEFAULT_ZHVI_PATH
 
     def do_GET(self) -> None:
-        if self.path == "/health":
+        parsed = urlparse(self.path)
+        if parsed.path == "/health":
             self.respond_json({"status": "ok"})
             return
-        if self.path.startswith("/static/"):
-            self.respond_static(self.path.removeprefix("/static/"))
+        if parsed.path == "/api/geocode":
+            params = parse_qs(parsed.query)
+            self.respond_geocode(params.get("address", [""])[0])
             return
-        if self.path not in {"/", "/predict"}:
+        if parsed.path.startswith("/static/"):
+            self.respond_static(parsed.path.removeprefix("/static/"))
+            return
+        if parsed.path not in {"/", "/predict"}:
             self.send_error(HTTPStatus.NOT_FOUND)
             return
         self.respond_html(render_page())
@@ -912,23 +1091,44 @@ class AppHandler(BaseHTTPRequestHandler):
         market_signal = None
         census_signal = None
         address_location = None
+        decision = None
         if not errors:
             try:
                 if values.get("address") and (not values.get("city") or not values.get("state") or not values.get("zip_code")):
                     address_location = self.lookup_address(values["address"])
                     apply_address_location(values, features, address_location)
                 prediction_features = finalize_prediction_features(features)
-                model_prediction = predict_price(self.model, prediction_features)
                 lookup_zip = str(values.get("zip_code", "") or prediction_features.get("zip_code", ""))
                 market_signal = self.lookup_market_signal(lookup_zip)
                 census_signal = self.lookup_census_signal(lookup_zip)
-                prediction = market_calibrated_estimate(model_prediction, market_signal, census_signal)
+                known_fact_count = known_property_fact_count(features)
+                if should_use_model(features):
+                    model_prediction = predict_price(self.model, prediction_features)
+                decision = decide_estimate(
+                    model_prediction=model_prediction,
+                    market_signal=market_signal,
+                    census_signal=census_signal,
+                    known_fact_count=known_fact_count,
+                )
+                prediction = decision.estimate
+                if prediction is None:
+                    errors.append("Enter a valid U.S. address or ZIP so public market data can anchor the estimate.")
             except ValueError as exc:
                 errors.append(str(exc))
             except OSError:
                 prediction_features = finalize_prediction_features(features)
-                model_prediction = predict_price(self.model, prediction_features)
-                prediction = model_prediction
+                known_fact_count = known_property_fact_count(features)
+                if should_use_model(features):
+                    model_prediction = predict_price(self.model, prediction_features)
+                    decision = decide_estimate(
+                        model_prediction=model_prediction,
+                        market_signal=None,
+                        census_signal=None,
+                        known_fact_count=known_fact_count,
+                    )
+                    prediction = decision.estimate
+                else:
+                    errors.append("Public data lookup failed, and there are not enough property facts to run a meaningful model estimate.")
                 market_signal = None
                 census_signal = None
         self.respond_html(
@@ -939,6 +1139,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 market_signal=market_signal,
                 census_signal=census_signal,
                 address_location=address_location,
+                decision=decision,
                 errors=errors,
             )
         )
@@ -952,6 +1153,27 @@ class AppHandler(BaseHTTPRequestHandler):
 
     def lookup_address(self, address: str):
         return geocode_address(address)
+
+    def respond_geocode(self, address: str) -> None:
+        try:
+            location = self.lookup_address(address)
+        except OSError:
+            location = None
+        if location is None:
+            self.respond_json({"matched": False})
+            return
+        self.respond_json(
+            {
+                "matched": True,
+                "city": location.city,
+                "state": location.state,
+                "zip_code": location.zip_code,
+                "matched_address": location.matched_address,
+                "latitude": "" if location.latitude is None else str(location.latitude),
+                "longitude": "" if location.longitude is None else str(location.longitude),
+                "source": location.source,
+            }
+        )
 
     def respond_html(self, body: str, status: HTTPStatus = HTTPStatus.OK) -> None:
         encoded = body.encode("utf-8")

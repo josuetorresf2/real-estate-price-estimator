@@ -6,10 +6,11 @@ A premium 3D web app and regression pipeline for estimating U.S. home sale price
 
 ## What It Does
 
-- Predicts a sale-price estimate with a scikit-learn regression pipeline.
+- Produces an estimate from real public market signals first, then uses the scikit-learn property model only when enough property facts are known.
 - Lets users enter `unknown` or leave most property facts blank.
-- Uses model imputation when square footage, bedrooms, bathrooms, lot size, year built, school rating, distance, or crime index are not known.
+- Uses model imputation for partial property data, but avoids pretending the model is meaningful when core facts are missing.
 - Uses a supplied address to look up city, state, ZIP, and map coordinates through the U.S. Census Geocoder.
+- Verifies addresses as users type and updates city, state, and ZIP from Census when a match is found.
 - Calibrates estimates with Zillow Research ZIP-level ZHVI data when available.
 - Optionally blends U.S. Census ACS median home value when `CENSUS_API_KEY` is configured.
 - Shows an OpenStreetMap area preview when coordinates are available.
@@ -24,10 +25,16 @@ The app is intentionally transparent about source quality:
 - **Zillow Research ZHVI**: free ZIP-level typical home value signal. This is not an address-level Zestimate.
 - **U.S. Census Geocoder**: free address-to-location lookup for city, state, ZIP, and coordinates.
 - **U.S. Census ACS 5-year B25077**: optional government median owner-occupied home value by ZIP Code Tabulation Area. Requires `CENSUS_API_KEY`.
-- **Trained regression model**: fills gaps using the model pipeline's categorical and numeric imputers.
+- **Trained regression model**: used only when core property facts are available; otherwise the app returns a public-data market baseline.
 - **OpenStreetMap**: area map preview when the Census Geocoder returns coordinates.
 
 Public/free data generally does not include exact address-level beds, baths, square footage, lot size, or year built. Those fields can be entered when known; otherwise the app estimates using imputation and market context.
+
+The app deliberately changes behavior based on data quality:
+
+- If square footage, beds, baths, and lot size are known, it blends the property model with public market signals.
+- If those core property facts are unknown, it does **not** run a fake precise model estimate. It returns a ZIP or Census market baseline with a wider range.
+- If no public market anchor is found, it asks for a usable U.S. address or ZIP instead of inventing a number.
 
 Source references:
 
@@ -127,6 +134,8 @@ Current verification covers:
 - Zillow Research ZHVI parsing and blending.
 - Optional Census ACS blending logic.
 - Address lookup data application.
+- Data-quality-aware estimate decisions.
+- Realtime address verification through the local `/api/geocode` endpoint.
 - Browser route rendering.
 
 ## Production Notes

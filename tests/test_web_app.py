@@ -4,11 +4,15 @@ from real_estate_price_estimator.market_data import AddressLocation
 from real_estate_price_estimator.web_app import (
     AppHandler,
     apply_address_location,
+    address_status,
+    decide_estimate,
     finalize_prediction_features,
     format_currency,
+    known_property_fact_count,
     map_preview,
     parse_form,
     render_page,
+    should_use_model,
 )
 
 
@@ -58,6 +62,54 @@ def test_parse_form_allows_unknown_property_fields():
     assert finalized["square_feet"] is None
     assert finalized["bathrooms"] is None
     assert finalized["school_rating"] is None
+    assert known_property_fact_count(features) == 0
+    assert should_use_model(features) is False
+
+
+def test_should_use_model_requires_core_property_facts():
+    features = {
+        "square_feet": 1850,
+        "bedrooms": 3,
+        "bathrooms": 2,
+        "lot_size": 0.18,
+        "year_built": None,
+        "school_rating": None,
+        "distance_to_city_center_miles": None,
+        "crime_index": None,
+    }
+
+    assert should_use_model(features) is True
+
+
+def test_decide_estimate_prefers_public_market_baseline_without_core_facts():
+    class Signal:
+        typical_home_value = 600000
+
+    decision = decide_estimate(
+        model_prediction=None,
+        market_signal=Signal(),
+        census_signal=None,
+        known_fact_count=0,
+    )
+
+    assert decision.estimate == 600000
+    assert decision.used_model is False
+    assert decision.method == "Public-data market baseline: Zillow Research ZHVI"
+
+
+def test_decide_estimate_uses_model_when_core_facts_are_known():
+    class Signal:
+        typical_home_value = 600000
+
+    decision = decide_estimate(
+        model_prediction=1000000,
+        market_signal=Signal(),
+        census_signal=None,
+        known_fact_count=4,
+    )
+
+    assert decision.estimate == 780000
+    assert decision.used_model is True
 
 
 def test_render_page_escapes_values_and_shows_prediction():
@@ -108,6 +160,11 @@ def test_map_preview_renders_openstreetmap_if_coordinates_exist():
     assert "Mapped address area" in preview
 
 
+def test_address_status_markup_is_rendered_only_for_address():
+    assert "data-address-status" in address_status("address")
+    assert address_status("city") == ""
+
+
 def test_get_predict_route_renders_app(monkeypatch):
     responses = []
 
@@ -122,3 +179,36 @@ def test_get_predict_route_renders_app(monkeypatch):
     assert responses
     assert responses[0] != HTTPStatus.NOT_FOUND
     assert "Real Estate Price Estimator" in responses[0]
+
+
+def test_geocode_route_returns_verified_location(monkeypatch):
+    responses = []
+    location = AddressLocation(
+        city="Denver",
+        state="CO",
+        zip_code="80202",
+        matched_address="100 MAIN ST, DENVER, CO, 80202",
+        latitude=39.75,
+        longitude=-104.99,
+    )
+
+    monkeypatch.setattr(AppHandler, "lookup_address", lambda self, address: location)
+    monkeypatch.setattr(AppHandler, "respond_json", lambda self, payload: responses.append(payload))
+
+    handler = object.__new__(AppHandler)
+    handler.path = "/api/geocode?address=100%20Main%20St%20Denver%20CO"
+
+    handler.do_GET()
+
+    assert responses == [
+        {
+            "matched": True,
+            "city": "Denver",
+            "state": "CO",
+            "zip_code": "80202",
+            "matched_address": "100 MAIN ST, DENVER, CO, 80202",
+            "latitude": "39.75",
+            "longitude": "-104.99",
+            "source": "U.S. Census Geocoder",
+        }
+    ]
