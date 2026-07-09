@@ -1379,16 +1379,6 @@ def render_page(
       font-size: 0.78rem;
       line-height: 1;
     }}
-    .traffic {{
-      width: 15px;
-      height: 15px;
-      border-radius: 50%;
-      box-shadow: inset 0 -1px 2px rgba(0, 0, 0, 0.28);
-      flex: 0 0 auto;
-    }}
-    .traffic.red {{ background: #ff4d5a; }}
-    .traffic.yellow {{ background: #ffc31f; }}
-    .traffic.green {{ background: #31d468; }}
     .chrome-actions {{
       border: 1px solid rgba(255, 255, 255, 0.11);
       border-radius: 999px;
@@ -1509,17 +1499,14 @@ def render_page(
   <main>
     <nav aria-label="Primary" class="app-chrome">
       <div class="chrome-left">
-        <span class="traffic red" aria-hidden="true"></span>
-        <span class="traffic yellow" aria-hidden="true"></span>
-        <span class="traffic green" aria-hidden="true"></span>
         <strong>ValuationCheck</strong>
         <small>public data workbench</small>
       </div>
       <div class="chrome-actions">
-        <span>Address</span>
-        <span>Map</span>
-        <span>Signals</span>
-        <span>Deployable</span>
+        <span>1. Country</span>
+        <span>2. Address</span>
+        <span>3. Match</span>
+        <span>4. Estimate</span>
       </div>
     </nav>
     <header>

@@ -92,6 +92,21 @@ http://127.0.0.1:8000
 
 The first market-backed estimate may take longer because the app downloads and caches Zillow Research's free ZIP-level ZHVI CSV in `data/zillow_zhvi_zip.csv`.
 
+## Country Examples
+
+Use the `Country` field first, then type or paste one of these examples into `Address`. Short fragments such as `5324` will show broad options; adding a city or country narrows the results.
+
+| Country | Example address/search | Expected data behavior |
+| --- | --- | --- |
+| United States | `1701 Wynkoop St Denver CO` | Census verifies the address, Zillow ZIP data can anchor the estimate, and optional ATTOM can fill property facts. |
+| Ecuador | `La Carolina Quito` | OpenStreetMap/Nominatim verifies the area and World Bank context is shown for Ecuador. |
+| Brazil | `Avenida Paulista Sao Paulo` | OpenStreetMap/Nominatim verifies the location and regional macro context is shown for Brazil. |
+| Peru | `Miraflores Lima` | OpenStreetMap/Nominatim verifies the district/city and World Bank context is shown for Peru. |
+| Colombia | `El Poblado Medellin` | OpenStreetMap/Nominatim verifies the location and World Bank context is shown for Colombia. |
+| Chile | `Providencia Santiago` | OpenStreetMap/Nominatim verifies the location and World Bank context is shown for Chile. |
+
+For South American markets, the app shows location, map, listing/macro context, and source availability. It does not claim to produce a Zillow-style address-level valuation unless country-specific property records or comparable sales are connected.
+
 ## Optional Census API
 
 The U.S. Census ACS API can add a government median-home-value signal. Set this only if you have a Census API key:
