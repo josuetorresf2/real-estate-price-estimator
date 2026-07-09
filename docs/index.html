@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Property Valuation Workbench | Joshue Torres</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #08090b;
+      --panel: rgba(255, 255, 255, 0.075);
+      --line: rgba(255, 255, 255, 0.16);
+      --ink: #edf3f7;
+      --muted: rgba(237, 243, 247, 0.68);
+      --accent: #ff8f1f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 70% 12%, rgba(255, 143, 31, 0.28), transparent 30%),
+        radial-gradient(circle at 15% 20%, rgba(151, 71, 255, 0.22), transparent 28%),
+        linear-gradient(145deg, #08090b, #11131a 55%, #090a0d);
+    }
+    main {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 56px 0;
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 0.95fr) minmax(320px, 1.05fr);
+      gap: 28px;
+      align-items: center;
+      min-height: 78vh;
+    }
+    .eyebrow {
+      color: var(--accent);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 14px 0;
+      max-width: 760px;
+      font-size: clamp(3rem, 8vw, 7.2rem);
+      line-height: 0.9;
+      letter-spacing: -0.04em;
+    }
+    p {
+      color: var(--muted);
+      font-size: 1.05rem;
+      line-height: 1.65;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 28px;
+    }
+    a {
+      color: inherit;
+    }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      min-height: 48px;
+      padding: 0 18px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.92);
+      color: #08090b;
+      font-weight: 800;
+      text-decoration: none;
+    }
+    .button.secondary {
+      background: rgba(255, 255, 255, 0.07);
+      color: var(--ink);
+    }
+    .preview {
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 26px;
+      background: var(--panel);
+      box-shadow: 0 34px 130px rgba(0, 0, 0, 0.48);
+      backdrop-filter: blur(24px);
+    }
+    .preview img {
+      display: block;
+      width: 100%;
+      border-radius: 18px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 20px;
+    }
+    .card {
+      min-height: 150px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--panel);
+    }
+    .card strong {
+      display: block;
+      margin-bottom: 8px;
+      color: white;
+      font-size: 1rem;
+    }
+    .card span {
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    footer {
+      margin-top: 42px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+    @media (max-width: 860px) {
+      .hero,
+      .grid {
+        grid-template-columns: 1fr;
+      }
+      .hero {
+        min-height: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div>
+        <span class="eyebrow">Portfolio project by Joshue Torres</span>
+        <h1>Property Valuation Workbench</h1>
+        <p>
+          A production-style real estate estimator that verifies locations, maps properties,
+          checks public data coverage, and explains when the model should not pretend to know
+          unavailable property facts.
+        </p>
+        <div class="actions">
+          <a class="button" href="https://render.com/deploy?repo=https://github.com/josuetorresf2/real-estate-price-estimator">Deploy on Render</a>
+          <a class="button secondary" href="https://github.com/josuetorresf2/real-estate-price-estimator">View GitHub Repo</a>
+        </div>
+      </div>
+      <div class="preview">
+        <img src="./images/estimator-hero.jpg" alt="Property Valuation Workbench application preview">
+      </div>
+    </section>
+    <section class="grid" aria-label="Project highlights">
+      <div class="card">
+        <strong>Real data workflow</strong>
+        <span>Uses Census, Zillow Research, OpenStreetMap, optional provider APIs, and regional public context.</span>
+      </div>
+      <div class="card">
+        <strong>Honest estimates</strong>
+        <span>Separates property-level model estimates from public market baselines and labels uncertainty.</span>
+      </div>
+      <div class="card">
+        <strong>Deployable app</strong>
+        <span>Ships with Docker, Render Blueprint config, Vercel WSGI fallback, tests, and a health endpoint.</span>
+      </div>
+    </section>
+    <footer>
+      GitHub Pages is a static portfolio page. Use Render or Vercel to run the live Python estimator.
+    </footer>
+  </main>
+</body>
+</html>

@@ -8,6 +8,13 @@ A production-style real estate valuation workbench that verifies locations, maps
 
 ![Property Valuation Workbench hero](docs/images/estimator-hero.jpg)
 
+## Public Links
+
+- Repository: [github.com/josuetorresf2/real-estate-price-estimator](https://github.com/josuetorresf2/real-estate-price-estimator)
+- Render deploy: [one-click Blueprint deploy](https://render.com/deploy?repo=https://github.com/josuetorresf2/real-estate-price-estimator)
+- Vercel deploy fallback: import the public GitHub repo into Vercel. The repo includes `app.py`, `vercel.json`, and a WSGI adapter for Vercel's Python runtime.
+- GitHub Pages note: Pages is static hosting. It is good for a portfolio/project page, but it cannot run the Python estimator, model, geocoding APIs, or `/predict` backend.
+
 ## Why This Project Exists
 
 Most demo price estimators are technically simple but product-wise weak: they ask users for data they may not know, hide source quality, and return a confident-looking number even when the data is thin.
@@ -177,6 +184,26 @@ This repo includes `render.yaml` and a `Dockerfile` for Render.
 3. Select the free web service plan.
 4. Add optional secrets for provider keys.
 5. Deploy. Render builds the Docker image and publishes the app on a generated `onrender.com` URL.
+
+## Vercel Fallback
+
+Vercel can run this app through its Python WSGI runtime. This is useful if Docker deployment is unavailable.
+
+1. In Vercel, import `https://github.com/josuetorresf2/real-estate-price-estimator`.
+2. Keep the default project root.
+3. Vercel reads `app.py`, `vercel.json`, and `[tool.vercel]` from `pyproject.toml`.
+4. Add optional environment variables for API keys.
+5. Deploy.
+
+The Vercel path uses `src/real_estate_price_estimator/wsgi.py`, which adapts the same app routes to serverless WSGI:
+
+- `/`
+- `/predict`
+- `/health`
+- `/api/geocode`
+- `/api/suggest`
+- `/api/reverse-geocode`
+- `/static/vendor/three.module.js`
 
 ## Training and CLI Usage
 
