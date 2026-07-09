@@ -2,6 +2,21 @@
 
 A production-style valuation workbench and regression pipeline for estimating home prices from verified addresses, U.S. ZIP-level market signals, optional property-record APIs, regional listing context, and public government/global location data.
 
+## Try These Examples
+
+Select the country in the app, then paste the matching address/search text:
+
+| Country | Try this address/search |
+| --- | --- |
+| United States | `1701 Wynkoop St Denver CO` |
+| Ecuador | `La Carolina Quito` |
+| Brazil | `Avenida Paulista Sao Paulo` |
+| Peru | `Miraflores Lima` |
+| Colombia | `El Poblado Medellin` |
+| Chile | `Providencia Santiago` |
+
+Short fragments such as `5324` also return broad address options; add city/country to narrow them.
+
 ![Estimator hero](docs/images/estimator-hero.jpg)
 
 ## What It Does
@@ -92,7 +107,7 @@ http://127.0.0.1:8000
 
 The first market-backed estimate may take longer because the app downloads and caches Zillow Research's free ZIP-level ZHVI CSV in `data/zillow_zhvi_zip.csv`.
 
-## Country Examples
+## Country Data Behavior
 
 Use the `Country` field first, then type or paste one of these examples into `Address`. Short fragments such as `5324` will show broad options; adding a city or country narrows the results.
 
