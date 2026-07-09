@@ -26,6 +26,7 @@ from .market_data import (
     property_facts_for_address,
     regional_macro_signal,
     regional_listing_signal,
+    reverse_geocode_global,
 )
 from .pipeline import load_model, load_training_data, predict_price, save_model, train
 
@@ -394,7 +395,7 @@ def property_fact_payload(facts, distance_miles: float | None, neighborhood: str
     if distance_miles is not None:
         fields["distance_to_city_center_miles"] = {
             "value": f"{distance_miles:.1f}",
-            "source": "Calculated from U.S. Census Geocoder coordinates",
+            "source": "Calculated from verified geocoded coordinates",
         }
     missing = {
         "neighborhood": "Neighborhood is unavailable from the current verified public sources.",
@@ -403,8 +404,8 @@ def property_fact_payload(facts, distance_miles: float | None, neighborhood: str
         "bathrooms": "Bathroom count is unavailable from the current verified property-record sources.",
         "lot_size": "Lot size is unavailable from the current verified property-record sources.",
         "year_built": "Year built is unavailable from the current verified property-record sources.",
-        "school_rating": "School rating is not provided by Zillow Research or Census Geocoder.",
-        "crime_index": "Crime index is not provided by Zillow Research or Census Geocoder.",
+        "school_rating": "School rating is unavailable from the current verified public sources.",
+        "crime_index": "Crime index is unavailable from the current verified public sources.",
     }
     for field in fields:
         missing.pop(field, None)
@@ -458,6 +459,30 @@ def location_payload(location) -> dict[str, str]:
         "latitude": "" if location.latitude is None else str(location.latitude),
         "longitude": "" if location.longitude is None else str(location.longitude),
         "source": location.source,
+    }
+
+
+def enriched_location_payload(
+    location,
+    *,
+    country: str,
+    suggestions: list,
+    property_facts,
+    neighborhood: str | None,
+    distance_miles: float | None,
+    regional_signal,
+    macro_signal,
+) -> dict[str, object]:
+    return {
+        "matched": True,
+        **location_payload(location),
+        "country": country,
+        "suggestions": [location_payload(match) for match in suggestions[:5]],
+        "property_facts": property_fact_payload(property_facts, distance_miles, neighborhood),
+        "regional_listing": regional_listing_payload(regional_signal),
+        "regional_macro": regional_macro_payload(macro_signal),
+        "street_view_url": street_view_url(location),
+        "mapbox_static_url": mapbox_static_url(location),
     }
 
 
@@ -1138,6 +1163,26 @@ def render_page(
       display: grid;
       gap: 8px;
     }}
+    .selectable-map {{
+      position: relative;
+      cursor: crosshair;
+    }}
+    .selectable-map iframe,
+    .selectable-map img {{
+      pointer-events: none;
+    }}
+    .map-select-hint {{
+      position: absolute;
+      left: 10px;
+      bottom: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.66);
+      color: rgba(255, 255, 255, 0.86);
+      padding: 5px 9px;
+      font-size: 0.7rem;
+      pointer-events: none;
+    }}
     .live-map iframe,
     .live-map img {{
       width: 100%;
@@ -1350,7 +1395,7 @@ def render_page(
       background: rgba(255, 255, 255, 0.045);
       padding: 6px 10px;
     }}
-    .chrome-actions a {{
+    .chrome-actions span {{
       color: rgba(255, 255, 255, 0.78);
       font-size: 0.75rem;
       font-weight: 700;
@@ -1471,10 +1516,10 @@ def render_page(
         <small>public data workbench</small>
       </div>
       <div class="chrome-actions">
-        <a href="#estimate">Workbench</a>
-        <a href="https://www.zillow.com/research/data/" target="_blank" rel="noreferrer">Data</a>
-        <a href="#market">Sources</a>
-        <a href="#contact">Deploy</a>
+        <span>Address</span>
+        <span>Map</span>
+        <span>Signals</span>
+        <span>Deployable</span>
       </div>
     </nav>
     <header>
@@ -1491,6 +1536,14 @@ def render_page(
       <div><span>Deployment</span><strong>Docker + Render</strong></div>
     </section>
     <form id="estimate" method="post" action="/predict">
+      <datalist id="countryOptions">
+        <option value="United States"></option>
+        <option value="Ecuador"></option>
+        <option value="Brazil"></option>
+        <option value="Peru"></option>
+        <option value="Colombia"></option>
+        <option value="Chile"></option>
+      </datalist>
       {f'<ul class="errors">{error_items}</ul>' if error_items else ''}
       <div class="surface">
         <div class="grid">
@@ -1599,7 +1652,10 @@ def render_page(
       liveContext.innerHTML = `
         <span>Address intelligence</span>
         <div class="live-map">
-          ${{map}}
+          <div class="selectable-map" data-selectable-map data-lat="${{lat}}" data-lon="${{lon}}" data-dlat="0.012" data-dlon="0.018">
+            ${{map}}
+            <span class="map-select-hint">Click map to refine location</span>
+          </div>
           <dl>
             <div><dt>Verified address</dt><dd>${{escapeText(payload.matched_address)}}</dd></div>
             <div><dt>Location</dt><dd>${{escapeText(payload.city)}}, ${{escapeText(payload.state)}} ${{escapeText(payload.zip_code)}}</dd></div>
@@ -1615,6 +1671,9 @@ def render_page(
       if (!addressSuggestions) return;
       addressSuggestions.innerHTML = "";
       addressSuggestions.dataset.open = suggestions.length ? "true" : "false";
+      if (suggestions.length) {{
+        setAddressStatus("Select a verified address option, or keep typing to narrow results.");
+      }}
       suggestions.slice(0, 5).forEach((suggestion) => {{
         const item = document.createElement("li");
         const button = document.createElement("button");
@@ -1631,7 +1690,7 @@ def render_page(
     }}
 
     async function loadSuggestions(address) {{
-      if (address.length < 6) {{
+      if (address.length < 3) {{
         renderSuggestions([]);
         return;
       }}
@@ -1646,15 +1705,44 @@ def render_page(
         const response = await fetch(`/api/suggest?${{params.toString()}}`);
         const payload = await response.json();
         renderSuggestions(payload.suggestions || []);
+        if (!(payload.suggestions || []).length && address.length >= 3) {{
+          setAddressStatus("No verified options yet. Add city, region, or country to narrow the search.");
+        }}
       }} catch (error) {{
         renderSuggestions([]);
+      }}
+    }}
+
+    async function selectMapPoint(lat, lon) {{
+      const params = new URLSearchParams({{
+        lat: String(lat),
+        lon: String(lon),
+        country: countryInput.value.trim(),
+      }});
+      setAddressStatus("Resolving selected map point...");
+      try {{
+        const response = await fetch(`/api/reverse-geocode?${{params.toString()}}`);
+        const payload = await response.json();
+        if (!payload.matched) {{
+          setAddressStatus("That map point could not be resolved to a verified address.", "error");
+          return;
+        }}
+        addressInput.value = payload.matched_address || addressInput.value;
+        cityInput.value = payload.city || cityInput.value;
+        stateInput.value = payload.state || stateInput.value;
+        zipInput.value = payload.zip_code || zipInput.value;
+        applyEnrichment(payload);
+        renderLiveContext(payload);
+        setAddressStatus(`Selected map point: ${{payload.matched_address}}`, "matched");
+      }} catch (error) {{
+        setAddressStatus("Map point lookup is unavailable right now.", "error");
       }}
     }}
 
     async function verifyAddress() {{
       const address = addressInput.value.trim();
       if (address.length < 8) {{
-        setAddressStatus("Type a full U.S. address to verify city, state, and ZIP.");
+        setAddressStatus("Type an address, place name, or postal code. Add city/country if results are broad.");
         return;
       }}
       if (addressController) addressController.abort();
@@ -1670,7 +1758,7 @@ def render_page(
         }});
         const payload = await response.json();
         if (!payload.matched) {{
-          setAddressStatus("No verified Census match yet. Add street, city, and state.", "error");
+          setAddressStatus("No verified match yet. Add city, region, or country, or choose an address option.", "error");
           return;
         }}
         cityInput.value = payload.city || cityInput.value;
@@ -1694,7 +1782,22 @@ def render_page(
           verifyAddress();
         }}, 650);
       }});
-      setAddressStatus("Type a full U.S. address to verify city, state, and ZIP.");
+      liveContext?.addEventListener("click", (event) => {{
+        const target = event.target.closest("[data-selectable-map]");
+        if (!target) return;
+        const rect = target.getBoundingClientRect();
+        const baseLat = Number(target.dataset.lat);
+        const baseLon = Number(target.dataset.lon);
+        const dLat = Number(target.dataset.dlat);
+        const dLon = Number(target.dataset.dlon);
+        if (![baseLat, baseLon, dLat, dLon].every(Number.isFinite)) return;
+        const x = (event.clientX - rect.left) / rect.width;
+        const y = (event.clientY - rect.top) / rect.height;
+        const selectedLon = baseLon - dLon + x * dLon * 2;
+        const selectedLat = baseLat + dLat - y * dLat * 2;
+        selectMapPoint(selectedLat, selectedLon);
+      }});
+      setAddressStatus("Type an address, place name, or postal code. You can also choose from verified options.");
     }}
 
     const canvas = document.getElementById("cityScene");
@@ -1852,6 +1955,8 @@ def render_page(
 
 
 def input_attributes(field: str) -> str:
+    if field == "country":
+        return 'type="text" list="countryOptions" autocomplete="country-name"'
     if field == "year_built":
         return 'type="text" inputmode="numeric" placeholder="Leave blank unless known"'
     if field in {"address", "city", "state", "neighborhood", "zip_code", "country"}:
@@ -1865,7 +1970,7 @@ def field_help(field: str) -> str:
     if field == "year_built":
         return '<small class="field-help">Leave blank if unknown. Enter 2026 for a brand-new build scenario.</small>'
     if field == "address":
-        return '<small class="field-help">Used to verify location, map context, and country-specific public signals.</small>'
+        return '<small class="field-help">Type an address or place, choose a suggestion, or refine it from the map.</small>'
     if field == "country":
         return '<small class="field-help">Supported: United States, Ecuador, Brazil, Peru, Colombia, Chile.</small>'
     if field in {"neighborhood", "square_feet", "bedrooms", "bathrooms", "lot_size", "school_rating", "distance_to_city_center_miles", "crime_index"}:
@@ -1912,6 +2017,14 @@ class AppHandler(BaseHTTPRequestHandler):
                 city=params.get("city", [""])[0],
                 state=params.get("state", [""])[0],
                 zip_code=params.get("zip_code", [""])[0],
+            )
+            return
+        if parsed.path == "/api/reverse-geocode":
+            params = parse_qs(parsed.query)
+            self.respond_reverse_geocode(
+                params.get("lat", [""])[0],
+                params.get("lon", [""])[0],
+                country=params.get("country", ["United States"])[0],
             )
             return
         if parsed.path.startswith("/static/"):
@@ -1965,7 +2078,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 )
                 prediction = decision.estimate
                 if prediction is None:
-                    errors.append("Enter a valid address or ZIP/postal code so public market data can anchor the estimate.")
+                    errors.append("Enter a verified address or select a map point so public location data can anchor the estimate.")
             except ValueError as exc:
                 errors.append(str(exc))
             except OSError:
@@ -2050,6 +2163,12 @@ class AppHandler(BaseHTTPRequestHandler):
         except OSError:
             return None
 
+    def lookup_reverse_geocode(self, latitude: float, longitude: float):
+        try:
+            return reverse_geocode_global(latitude, longitude)
+        except OSError:
+            return None
+
     def respond_suggestions(self, address: str, *, country: str = "United States", city: str = "", state: str = "", zip_code: str = "") -> None:
         query = enriched_address_query(address, city=city, state=state, zip_code=zip_code)
         try:
@@ -2075,17 +2194,42 @@ class AppHandler(BaseHTTPRequestHandler):
         regional_signal = self.lookup_regional_listing_signal(regional_query, country=country)
         macro_signal = self.lookup_regional_macro_signal(country=country)
         self.respond_json(
-            {
-                "matched": True,
-                **location_payload(location),
-                "country": country,
-                "suggestions": [location_payload(match) for match in suggestions[:5]],
-                "property_facts": property_fact_payload(property_facts, distance_miles, neighborhood),
-                "regional_listing": regional_listing_payload(regional_signal),
-                "regional_macro": regional_macro_payload(macro_signal),
-                "street_view_url": street_view_url(location),
-                "mapbox_static_url": mapbox_static_url(location),
-            }
+            enriched_location_payload(
+                location,
+                country=country,
+                suggestions=suggestions,
+                property_facts=property_facts,
+                neighborhood=neighborhood,
+                distance_miles=distance_miles,
+                regional_signal=regional_signal,
+                macro_signal=macro_signal,
+            )
+        )
+
+    def respond_reverse_geocode(self, latitude: str, longitude: str, *, country: str = "United States") -> None:
+        try:
+            location = self.lookup_reverse_geocode(float(latitude), float(longitude))
+        except ValueError:
+            location = None
+        if location is None:
+            self.respond_json({"matched": False})
+            return
+        regional_query = " ".join(part for part in (location.city, location.state, country) if part)
+        regional_signal = self.lookup_regional_listing_signal(regional_query, country=country)
+        macro_signal = self.lookup_regional_macro_signal(country=country)
+        distance_miles = self.lookup_distance_to_city_center(location)
+        neighborhood = self.lookup_neighborhood(location.matched_address, country=country)
+        self.respond_json(
+            enriched_location_payload(
+                location,
+                country=country,
+                suggestions=[location],
+                property_facts=None,
+                neighborhood=neighborhood,
+                distance_miles=distance_miles,
+                regional_signal=regional_signal,
+                macro_signal=macro_signal,
+            )
         )
 
     def respond_html(self, body: str, status: HTTPStatus = HTTPStatus.OK) -> None:

@@ -269,7 +269,7 @@ def test_geocode_route_returns_verified_location(monkeypatch):
                 "fields": {
                     "distance_to_city_center_miles": {
                         "value": "1.4",
-                        "source": "Calculated from U.S. Census Geocoder coordinates",
+                        "source": "Calculated from verified geocoded coordinates",
                     },
                     "neighborhood": {
                         "value": "Downtown",
@@ -282,8 +282,8 @@ def test_geocode_route_returns_verified_location(monkeypatch):
                     "bathrooms": "Bathroom count is unavailable from the current verified property-record sources.",
                     "lot_size": "Lot size is unavailable from the current verified property-record sources.",
                     "year_built": "Year built is unavailable from the current verified property-record sources.",
-                    "school_rating": "School rating is not provided by Zillow Research or Census Geocoder.",
-                    "crime_index": "Crime index is not provided by Zillow Research or Census Geocoder.",
+                    "school_rating": "School rating is unavailable from the current verified public sources.",
+                    "crime_index": "Crime index is unavailable from the current verified public sources.",
                 },
                 "provider_configured": False,
             },
@@ -321,3 +321,32 @@ def test_suggest_route_returns_address_options(monkeypatch):
 
     assert queries == ["5324 Av Austin TX 78751"]
     assert responses[0]["suggestions"][0]["matched_address"] == "5324 AVENUE F, AUSTIN, TX, 78751"
+
+
+def test_reverse_geocode_route_returns_selected_map_point(monkeypatch):
+    responses = []
+    location = AddressLocation(
+        city="Quito",
+        state="Pichincha",
+        zip_code="170518",
+        matched_address="La Carolina, Quito, Ecuador",
+        latitude=-0.1934,
+        longitude=-78.4824,
+        source="OpenStreetMap Nominatim",
+    )
+
+    monkeypatch.setattr(AppHandler, "lookup_reverse_geocode", lambda self, latitude, longitude: location)
+    monkeypatch.setattr(AppHandler, "lookup_neighborhood", lambda self, address, country="United States": None)
+    monkeypatch.setattr(AppHandler, "lookup_distance_to_city_center", lambda self, location: None)
+    monkeypatch.setattr(AppHandler, "lookup_regional_listing_signal", lambda self, query, country: None)
+    monkeypatch.setattr(AppHandler, "lookup_regional_macro_signal", lambda self, country: None)
+    monkeypatch.setattr(AppHandler, "respond_json", lambda self, payload: responses.append(payload))
+
+    handler = object.__new__(AppHandler)
+    handler.path = "/api/reverse-geocode?lat=-0.1934&lon=-78.4824&country=Ecuador"
+
+    handler.do_GET()
+
+    assert responses[0]["matched"] is True
+    assert responses[0]["country"] == "Ecuador"
+    assert responses[0]["matched_address"] == "La Carolina, Quito, Ecuador"

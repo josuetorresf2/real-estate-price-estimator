@@ -16,6 +16,7 @@ CENSUS_ACS_YEAR = "2023"
 ATTOM_PROPERTY_URL = "https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/expandedprofile"
 GEOAPIFY_AUTOCOMPLETE_URL = "https://api.geoapify.com/v1/geocode/autocomplete"
 NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
+NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse"
 MERCADOLIBRE_SEARCH_URL = "https://api.mercadolibre.com/sites/{site_id}/search"
 WORLD_BANK_URL = "https://api.worldbank.org/v2/country/{country_code}/indicator/{indicator}"
 COUNTRY_CODES = {
@@ -231,6 +232,26 @@ def nominatim_address_matches(address: str, *, country: str = "United States", t
     with urlopen(request, timeout=timeout) as response:
         payload = json.loads(response.read().decode("utf-8"))
     return [_address_location_from_nominatim(item) for item in payload]
+
+
+def reverse_geocode_global(latitude: float, longitude: float, *, timeout: float = 8) -> AddressLocation | None:
+    query = urlencode(
+        {
+            "lat": str(latitude),
+            "lon": str(longitude),
+            "format": "jsonv2",
+            "addressdetails": "1",
+        }
+    )
+    request = Request(
+        f"{NOMINATIM_REVERSE_URL}?{query}",
+        headers={"User-Agent": "real-estate-price-estimator/0.1 (portfolio project)"},
+    )
+    with urlopen(request, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    if not payload or payload.get("error"):
+        return None
+    return _address_location_from_nominatim(payload)
 
 
 def geoapify_address_suggestions(
