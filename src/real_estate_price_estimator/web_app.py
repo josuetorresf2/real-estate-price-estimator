@@ -1218,7 +1218,172 @@ def render_page(
       background: #dbeafe;
       filter: none;
     }}
+    /* Reference-inspired dark glass treatment. */
+    body {{
+      background:
+        linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+        radial-gradient(circle at 50% 4%, rgba(255, 143, 31, 0.16), transparent 18%),
+        #020202;
+      background-size: 64px 64px, 64px 64px, auto, auto;
+    }}
+    body.loading main {{
+      filter: blur(7px);
+      opacity: 0.5;
+    }}
+    #cityScene {{
+      opacity: 0.035;
+    }}
+    .scene-vignette {{
+      background:
+        radial-gradient(circle at 52% 12%, rgba(255, 143, 31, 0.1), transparent 12%),
+        linear-gradient(180deg, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.96));
+    }}
+    body::before {{
+      opacity: 0.72;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 44px 44px;
+      mask-image: linear-gradient(180deg, transparent 3%, black 16%, black 86%, transparent);
+    }}
+    main {{
+      width: min(1180px, calc(100% - 24px));
+      padding: 42px 0;
+    }}
+    .app-chrome {{
+      min-height: 58px;
+      align-items: center;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 999px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.055)),
+        rgba(24, 24, 24, 0.82);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 22px 60px rgba(0, 0, 0, 0.46);
+      padding: 9px 12px 9px 18px;
+      backdrop-filter: blur(26px) saturate(145%);
+      text-transform: none;
+      letter-spacing: 0;
+    }}
+    .chrome-left,
+    .chrome-actions {{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }}
+    .chrome-left strong {{
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 1rem;
+      line-height: 1;
+    }}
+    .chrome-left small {{
+      color: rgba(255, 255, 255, 0.48);
+      font-size: 0.78rem;
+      line-height: 1;
+    }}
+    .traffic {{
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      box-shadow: inset 0 -1px 2px rgba(0, 0, 0, 0.28);
+      flex: 0 0 auto;
+    }}
+    .traffic.red {{ background: #ff4d5a; }}
+    .traffic.yellow {{ background: #ffc31f; }}
+    .traffic.green {{ background: #31d468; }}
+    .chrome-actions {{
+      border: 1px solid rgba(255, 255, 255, 0.11);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.045);
+      padding: 6px 10px;
+    }}
+    .chrome-actions a {{
+      color: rgba(255, 255, 255, 0.78);
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }}
+    .eyebrow {{
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.065);
+    }}
+    h1 {{
+      font-size: clamp(2.8rem, 7vw, 6.6rem);
+      text-transform: none;
+      font-weight: 800;
+    }}
+    .signal-strip div,
+    .surface,
+    label,
+    .actions,
+    .property-map,
+    .live-context {{
+      border-color: rgba(255, 255, 255, 0.14);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.035)),
+        rgba(18, 18, 18, 0.72);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(24px) saturate(140%);
+    }}
+    .surface {{
+      border-radius: 30px;
+      padding: 14px;
+      box-shadow: 0 40px 120px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    }}
+    .grid {{
+      border-radius: 22px;
+      background: rgba(0, 0, 0, 0.18);
+    }}
+    label {{
+      border-radius: 20px;
+    }}
+    label.address {{
+      border-radius: 26px;
+    }}
+    input {{
+      color: rgba(255, 255, 255, 0.92);
+    }}
+    .actions {{
+      border-radius: 24px;
+    }}
+    .result strong,
+    .empty-result strong {{
+      text-transform: none;
+    }}
+    .live-context,
+    .market-card div,
+    .map-dossier,
+    .house-preview img,
+    .live-map iframe,
+    .live-map img {{
+      border-radius: 20px;
+    }}
+    button {{
+      min-height: 52px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.92);
+      color: #050505;
+      letter-spacing: 0.04em;
+    }}
+    button:hover {{
+      background: white;
+    }}
+    .loader {{
+      background: rgba(0, 0, 0, 0.82);
+    }}
+    .loader-orbit {{
+      border-color: rgba(255, 255, 255, 0.18);
+    }}
+    .loader-core {{
+      background: #ff8f1f;
+      box-shadow: 0 0 54px rgba(255, 143, 31, 0.64);
+    }}
     @media (max-width: 820px) {{
+      .app-chrome {{ border-radius: 24px; align-items: stretch; flex-direction: column; }}
+      .chrome-left, .chrome-actions {{ justify-content: center; flex-wrap: wrap; }}
+      .signal-strip {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
       header {{ align-items: stretch; flex-direction: column; }}
       header p, .result {{ max-width: none; text-align: left; }}
       .surface {{ grid-template-columns: 1fr; }}
@@ -1231,6 +1396,7 @@ def render_page(
       main {{ width: min(100% - 20px, 1080px); padding: 18px 0; }}
       h1 {{ font-size: clamp(2.45rem, 15vw, 4.1rem); }}
       header p {{ font-size: 0.94rem; }}
+      .signal-strip {{ grid-template-columns: 1fr; }}
       .grid {{ grid-template-columns: 1fr; }}
       label.address {{ grid-column: auto; }}
       .scene {{ height: 120px; }}
@@ -1244,11 +1410,20 @@ def render_page(
   <div class="scene-vignette" aria-hidden="true"></div>
   <span class="easteregg" aria-hidden="true">Joshue Torres</span>
   <main>
-    <nav aria-label="Primary">
-      <a href="#estimate">Workbench</a>
-      <a href="https://www.zillow.com/research/data/" target="_blank" rel="noreferrer">Data</a>
-      <a href="#market">Sources</a>
-      <a href="#contact">Deploy</a>
+    <nav aria-label="Primary" class="app-chrome">
+      <div class="chrome-left">
+        <span class="traffic red" aria-hidden="true"></span>
+        <span class="traffic yellow" aria-hidden="true"></span>
+        <span class="traffic green" aria-hidden="true"></span>
+        <strong>ValuationCheck</strong>
+        <small>public data workbench</small>
+      </div>
+      <div class="chrome-actions">
+        <a href="#estimate">Workbench</a>
+        <a href="https://www.zillow.com/research/data/" target="_blank" rel="noreferrer">Data</a>
+        <a href="#market">Sources</a>
+        <a href="#contact">Deploy</a>
+      </div>
     </nav>
     <header>
       <div>
