@@ -1,90 +1,105 @@
-# Real Estate Price Estimator
+# Property Valuation Workbench
 
-A production-style valuation workbench and regression pipeline for estimating home prices from verified addresses, U.S. ZIP-level market signals, optional property-record APIs, regional listing context, and public government/global location data.
+A production-style real estate valuation workbench for verifying addresses, mapping properties, checking public data coverage, and producing transparent market-aware estimates.
+
+## Mission
+
+Housing price tools are often either too expensive, too opaque, or only useful in one market. This project demonstrates a practical alternative: an evidence-first valuation workflow that explains what data was found, what data is missing, and when a model should not pretend to know more than the sources support.
+
+## Problem Being Solved
+
+Most simple real estate estimators fail in two ways:
+
+- They ask users for facts they may not know, such as square footage, lot size, or year built.
+- They produce a confident-looking number even when the data is weak.
+
+This app is built to show stronger software engineering judgment. It verifies addresses, enriches the form from real providers when possible, shows map context, uses public market signals when available, and clearly labels missing or low-confidence data.
 
 ## Try These Examples
 
-Select the country in the app, then paste the matching address/search text:
+Select the country first, then paste the matching address/search text into `Address`.
 
-| Country | Try this address/search |
-| --- | --- |
-| United States | `1701 Wynkoop St Denver CO` |
-| Ecuador | `La Carolina Quito` |
-| Brazil | `Avenida Paulista Sao Paulo` |
-| Peru | `Miraflores Lima` |
-| Colombia | `El Poblado Medellin` |
-| Chile | `Providencia Santiago` |
+| Country | Try this address/search | What should happen |
+| --- | --- | --- |
+| United States | `1701 Wynkoop St Denver CO` | Verifies with Census, fills city/state/ZIP, maps the property, and can use Zillow ZIP data. |
+| Ecuador | `La Carolina Quito` | Verifies with OpenStreetMap/Nominatim and shows Ecuador regional macro context. |
+| Brazil | `Avenida Paulista Sao Paulo` | Verifies with OpenStreetMap/Nominatim and shows Brazil regional macro context. |
+| Peru | `Miraflores Lima` | Verifies district/city context and shows Peru regional macro context. |
+| Colombia | `El Poblado Medellin` | Verifies location context and shows Colombia regional macro context. |
+| Chile | `Providencia Santiago` | Verifies location context and shows Chile regional macro context. |
 
-Short fragments such as `5324` also return broad address options; add city/country to narrow them.
+Short fragments such as `5324` return broad address options. Add city/country to narrow the matches.
 
 ![Estimator hero](docs/images/estimator-hero.jpg)
 
-## What It Does
+## Tech Stack
 
-- Produces an estimate from real public market signals first, then uses the scikit-learn property model only when enough property facts are known.
-- Lets users enter `unknown` or leave most property facts blank.
-- Uses model imputation for partial property data, but avoids pretending the model is meaningful when core facts are missing.
-- Uses a supplied address to look up city, state/province, ZIP/postal code, and map coordinates through the U.S. Census Geocoder or OpenStreetMap Nominatim for supported South American countries.
-- Verifies addresses as users type, shows address candidates, and updates city, state, and ZIP when a match is found.
-- Supports country-aware lookup for the United States, Ecuador, Brazil, Peru, Colombia, and Chile.
-- Supports richer autocomplete through `GEOAPIFY_API_KEY`, with Census Geocoder as the no-key fallback.
-- Optionally fills address-level square feet, bedrooms, bathrooms, lot size, and year built through `ATTOM_API_KEY`.
-- Optionally fills neighborhood/suburb from Geoapify when `GEOAPIFY_API_KEY` returns that signal.
-- Calculates miles to city center from Census Geocoder coordinates when available.
-- Calibrates estimates with Zillow Research ZIP-level ZHVI data when available.
-- Optionally blends U.S. Census ACS median home value when `CENSUS_API_KEY` is configured.
-- Adds regional context for supported South American countries through OpenStreetMap/Nominatim, Mercado Libre public search when available, and World Bank country indicators.
-- Optionally shows real exterior context through Google Street View Static API when `GOOGLE_STREET_VIEW_API_KEY` is configured.
-- Shows an Engrain-inspired property map panel with a selected-property marker, market layers, source badges, Mapbox satellite-streets imagery when `MAPBOX_ACCESS_TOKEN` is configured, and OpenStreetMap fallback context.
-- Presents the estimate as an evidence-first product workflow: address resolution, source coverage, model decision, map context, and deployment path.
+- Python standard-library web server
+- scikit-learn regression pipeline
+- pandas and joblib for training and model persistence
+- Zillow Research ZHVI CSV integration
+- U.S. Census Geocoder and optional ACS data
+- OpenStreetMap/Nominatim global geocoding
+- Optional Geoapify autocomplete and neighborhood enrichment
+- Optional ATTOM address-level property facts
+- Optional Google Street View and Mapbox imagery
+- World Bank public indicators for regional context
+- Docker and Render deployment config
+- Pytest verification suite
 
-![Estimate result](docs/images/estimate-result.jpg)
+## Core Features
+
+- Country-aware address verification for the United States, Ecuador, Brazil, Peru, Colombia, and Chile.
+- Live address suggestions, including short-fragment fallback through public geocoding.
+- City, state/province, ZIP/postal code, latitude, and longitude enrichment.
+- Map preview with map-click reverse geocoding for location refinement.
+- U.S. market anchoring through Zillow Research ZIP-level ZHVI.
+- Optional U.S. Census ACS median home value signal.
+- Optional ATTOM property facts for square footage, beds, baths, lot size, and year built.
+- Optional Geoapify neighborhood/suburb enrichment.
+- Regional South America context from OpenStreetMap, Mercado Libre search when available, and World Bank indicators.
+- Honest estimate policy that avoids fake precision when core property facts are missing.
+- Docker-ready deployment with a Render blueprint.
+
+## User Workflow
+
+1. Select a country.
+2. Type an address, place name, or short fragment.
+3. Choose a verified address suggestion when options appear.
+4. Review the live map and source status.
+5. Leave unknown fields blank or type `unknown`.
+6. Submit the estimate.
+7. Review the estimate method, confidence, range, and source notes.
+
+## Data Quality System
+
+The app changes behavior based on data quality:
+
+- If square footage, beds, baths, and lot size are known, the property model can run.
+- If those core facts are unknown, the app does not invent a precise model estimate.
+- If Zillow or Census data is available, it returns a public-data market baseline.
+- If regional data is contextual rather than property-level, it labels it as context.
+- If a source cannot provide a field, the UI says that clearly instead of hiding it.
 
 ## Data Sources
 
-The app is intentionally transparent about source quality:
+- **Zillow Research ZHVI**: U.S. ZIP-level typical home value signal. This is not an address-level Zestimate.
+- **U.S. Census Geocoder**: U.S. address verification and coordinates.
+- **U.S. Census ACS 5-year B25077**: optional median owner-occupied home value by ZIP Code Tabulation Area.
+- **OpenStreetMap Nominatim**: global geocoding and reverse geocoding.
+- **Geoapify**: optional autocomplete and neighborhood/suburb enrichment.
+- **ATTOM**: optional U.S. address-level property records.
+- **Mercado Libre public search**: regional listing context when the public endpoint returns data.
+- **World Bank Indicators API**: country-level macro context for supported South American markets.
+- **Mapbox / Google Street View**: optional visual map or exterior context.
 
-- **Zillow Research ZHVI**: free ZIP-level typical home value signal. This is not an address-level Zestimate.
-- **U.S. Census Geocoder**: free address-to-location lookup for city, state, ZIP, and coordinates.
-- **U.S. Census ACS 5-year B25077**: optional government median owner-occupied home value by ZIP Code Tabulation Area. Requires `CENSUS_API_KEY`.
-- **ATTOM Property API**: optional address-level property facts such as living area, rooms, lot size, and year built. Requires `ATTOM_API_KEY`.
-- **Geoapify Address Autocomplete**: optional real address suggestions for partial user input. Requires `GEOAPIFY_API_KEY`.
-- **Google Street View Static API**: optional real exterior/street-level imagery. Requires `GOOGLE_STREET_VIEW_API_KEY`.
-- **Mapbox Static Images API**: optional satellite-streets map imagery. Requires `MAPBOX_ACCESS_TOKEN`.
-- **OpenStreetMap Nominatim**: global geocoding fallback for Ecuador, Brazil, Peru, Colombia, and Chile.
-- **Mercado Libre public search**: optional regional listing context where the public endpoint returns real estate listings.
-- **World Bank public indicators**: country-level GDP per capita and urban population context for South American markets.
-- **Trained regression model**: used only when core property facts are available; otherwise the app returns a public-data market baseline.
-- **OpenStreetMap**: area map preview when the Census Geocoder returns coordinates.
-- **Engrain/SightMap-inspired UX**: the app does not use Engrain's private platform, but borrows the product idea of an interactive property map with visual context and data layers.
+Outside the United States, the app does not claim Zillow-style valuation coverage. It verifies the location, maps the property area, and adds regional context when public APIs return it.
 
-Public/free Zillow Research and Census data generally do not include exact address-level beds, baths, square footage, lot size, or year built. Those fields can be entered when known, or auto-filled from ATTOM when an API key is configured. The app displays field-level source notes so users can see which facts were verified and which were unavailable.
+## Screenshots
 
-Outside the United States, the app does not claim Zillow-style valuation coverage. It verifies the address, maps the property area, adds regional listing or macro context when public APIs return it, and clearly labels those signals as contextual rather than appraised values.
+![Estimate result](docs/images/estimate-result.jpg)
 
-The app deliberately changes behavior based on data quality:
-
-- If square footage, beds, baths, and lot size are known, it blends the property model with public market signals.
-- If those core property facts are unknown, it does **not** run a fake precise model estimate. It returns a ZIP or Census market baseline with a wider range.
-- If no public market anchor is found, it asks for a usable U.S. address or ZIP instead of inventing a number.
-
-Source references:
-
-- [Zillow Research Data](https://www.zillow.com/research/data/)
-- [Zillow Public Real Estate Metrics API](https://www.zillowgroup.com/developers/api/public-data/real-estate-metrics/)
-- [U.S. Census Geocoder](https://geocoding.geo.census.gov/)
-- [U.S. Census ACS 5-Year API](https://www.census.gov/data/developers/data-sets/acs-5year.html)
-- [ATTOM Property API](https://api.developer.attomdata.com/)
-- [Geoapify Address Autocomplete API](https://apidocs.geoapify.com/docs/geocoding/address-autocomplete/)
-- [Google Street View Static API](https://developers.google.com/maps/documentation/streetview)
-- [Mapbox Static Images API](https://docs.mapbox.com/api/maps/static-images/)
-- [OpenStreetMap](https://www.openstreetmap.org/)
-- [Nominatim](https://nominatim.org/)
-- [Nominatim Usage Policy](https://operations.osmfoundation.org/policies/nominatim/)
-- [Mercado Libre Developers](https://developers.mercadolibre.com/)
-- [World Bank API](https://datahelpdesk.worldbank.org/knowledgebase/articles/889392-about-the-indicators-api-documentation)
-
-## Quick Start
+## Local Setup
 
 ```bash
 python -m venv .venv
@@ -93,7 +108,7 @@ pip install -r requirements.txt
 ./verify.sh
 ```
 
-Run the browser app:
+Run the app:
 
 ```bash
 PYTHONPATH=src python -m real_estate_price_estimator.web_app --port 8000
@@ -105,39 +120,12 @@ Open:
 http://127.0.0.1:8000
 ```
 
-The first market-backed estimate may take longer because the app downloads and caches Zillow Research's free ZIP-level ZHVI CSV in `data/zillow_zhvi_zip.csv`.
+## Optional API Keys
 
-## Country Data Behavior
-
-Use the `Country` field first, then type or paste one of these examples into `Address`. Short fragments such as `5324` will show broad options; adding a city or country narrows the results.
-
-| Country | Example address/search | Expected data behavior |
-| --- | --- | --- |
-| United States | `1701 Wynkoop St Denver CO` | Census verifies the address, Zillow ZIP data can anchor the estimate, and optional ATTOM can fill property facts. |
-| Ecuador | `La Carolina Quito` | OpenStreetMap/Nominatim verifies the area and World Bank context is shown for Ecuador. |
-| Brazil | `Avenida Paulista Sao Paulo` | OpenStreetMap/Nominatim verifies the location and regional macro context is shown for Brazil. |
-| Peru | `Miraflores Lima` | OpenStreetMap/Nominatim verifies the district/city and World Bank context is shown for Peru. |
-| Colombia | `El Poblado Medellin` | OpenStreetMap/Nominatim verifies the location and World Bank context is shown for Colombia. |
-| Chile | `Providencia Santiago` | OpenStreetMap/Nominatim verifies the location and World Bank context is shown for Chile. |
-
-For South American markets, the app shows location, map, listing/macro context, and source availability. It does not claim to produce a Zillow-style address-level valuation unless country-specific property records or comparable sales are connected.
-
-## Optional Census API
-
-The U.S. Census ACS API can add a government median-home-value signal. Set this only if you have a Census API key:
+The app works without keys, but optional providers improve enrichment:
 
 ```bash
-export CENSUS_API_KEY=your_key_here
-PYTHONPATH=src python -m real_estate_price_estimator.web_app --port 8000
-```
-
-Without a key, the app still uses the Census Geocoder and Zillow Research ZHVI.
-
-## Optional Enrichment APIs
-
-Address-level facts and imagery are provider-backed because free Zillow Research and Census endpoints do not include them:
-
-```bash
+export CENSUS_API_KEY=your_census_key_here
 export ATTOM_API_KEY=your_attom_key_here
 export GEOAPIFY_API_KEY=your_geoapify_key_here
 export GOOGLE_STREET_VIEW_API_KEY=your_google_maps_key_here
@@ -145,38 +133,28 @@ export MAPBOX_ACCESS_TOKEN=your_mapbox_token_here
 PYTHONPATH=src python -m real_estate_price_estimator.web_app --port 8000
 ```
 
-When `GEOAPIFY_API_KEY` is set, partial address input can return real autocomplete suggestions and may fill neighborhood/suburb when Geoapify returns that field. When `ATTOM_API_KEY` is set, the live address lookup can fill square feet, bedrooms, bathrooms, lot size, and year built from property records. When `GOOGLE_STREET_VIEW_API_KEY` is set, result pages can show real Street View exterior context for the verified address. When `MAPBOX_ACCESS_TOKEN` is set, live and result maps use Mapbox satellite-streets imagery; otherwise the app falls back to OpenStreetMap.
-
 ## Docker
 
-Build and run locally:
-
 ```bash
-docker build -t real-estate-price-estimator .
-docker run --rm -p 8000:8000 real-estate-price-estimator
-```
-
-Open:
-
-```text
-http://127.0.0.1:8000
+docker build -t property-valuation-workbench .
+docker run --rm -p 8000:8000 property-valuation-workbench
 ```
 
 ## Free Deployment
 
-This repo includes `render.yaml` and a `Dockerfile` for Render. Render web services receive a free `*.onrender.com` subdomain, and the service is configured to bind to `0.0.0.0` through the `PORT` environment variable.
+This repo includes `render.yaml` and a `Dockerfile` for Render.
 
 Deploy steps:
 
 1. Push this repository to GitHub.
 2. In Render, create a new Blueprint from the repository.
 3. Select the free web service plan.
-4. Add optional secret environment variables: `CENSUS_API_KEY`, `GEOAPIFY_API_KEY`, `ATTOM_API_KEY`, `GOOGLE_STREET_VIEW_API_KEY`, and `MAPBOX_ACCESS_TOKEN`.
+4. Add optional secrets: `CENSUS_API_KEY`, `GEOAPIFY_API_KEY`, `ATTOM_API_KEY`, `GOOGLE_STREET_VIEW_API_KEY`, and `MAPBOX_ACCESS_TOKEN`.
 5. Deploy. Render will build the Docker image and publish the app on its generated `onrender.com` URL.
 
 ## Training
 
-Generate deterministic sample data for local smoke tests:
+Generate deterministic sample data:
 
 ```bash
 python scripts/generate_sample_data.py
@@ -207,17 +185,27 @@ python -m real_estate_price_estimator.cli predict \
   --crime-index 31
 ```
 
-## Use Your Own Data
-
-Training CSV columns:
+## Project Structure
 
 ```text
-city,neighborhood,zip_code,square_feet,bedrooms,bathrooms,lot_size,year_built,school_rating,distance_to_city_center_miles,crime_index,price
+real-estate-price-estimator/
+  src/real_estate_price_estimator/
+    cli.py
+    market_data.py
+    pipeline.py
+    web_app.py
+  scripts/
+    generate_sample_data.py
+  tests/
+  data/
+  docs/images/
+  static/vendor/
+  Dockerfile
+  render.yaml
+  verify.sh
 ```
 
-`price` is the training target. For web predictions, most inputs can be blank or `unknown`; for training, provide complete rows where possible so the model learns a stronger local relationship.
-
-## Verification
+## Tests
 
 ```bash
 ./verify.sh
@@ -229,11 +217,28 @@ Current verification covers:
 - Unknown/blank property field parsing.
 - Zillow Research ZHVI parsing and blending.
 - Optional Census ACS blending logic.
-- Address lookup data application.
+- Address lookup and reverse geocoding.
+- Country-aware suggestion routes.
 - Data-quality-aware estimate decisions.
-- Realtime address verification through the local `/api/geocode` endpoint.
 - Browser route rendering.
 
-## Production Notes
+## Roadmap
 
-This is not an appraisal product. It is a market-aware estimator. Production use should retrain on current MLS, assessor, parcel, tax, school, and neighborhood data, and should use an approved property-record API if exact address-level facts are required.
+- Add a real production database for cached geocoding and provider responses.
+- Add first-class provider adapters for country-specific property record APIs.
+- Add comparable listing normalization by country and currency.
+- Add confidence scoring by source freshness and geographic precision.
+- Add a hosted demo with configured provider keys.
+- Add end-to-end browser tests for country examples.
+
+## GitHub Setup
+
+```bash
+git branch -M main
+git remote add origin https://github.com/YOUR_USERNAME/real-estate-price-estimator.git
+git add .
+git commit -m "Initial property valuation workbench"
+git push -u origin main
+```
+
+Do not commit real API keys. Use local environment variables or deployment secrets.

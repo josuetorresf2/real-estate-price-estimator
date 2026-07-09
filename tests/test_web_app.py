@@ -12,6 +12,7 @@ from real_estate_price_estimator.web_app import (
     enriched_address_query,
     finalize_prediction_features,
     format_currency,
+    format_price,
     known_property_fact_count,
     map_preview,
     parse_form,
@@ -114,6 +115,30 @@ def test_decide_estimate_uses_model_when_core_facts_are_known():
 
     assert decision.estimate == 780000
     assert decision.used_model is True
+
+
+def test_decide_estimate_uses_regional_listing_baseline_without_core_facts():
+    class RegionalSignal:
+        average_price = 425000
+        listing_count = 8
+        currency = "BRL"
+        source = "Mercado Libre MLB public search"
+
+    decision = decide_estimate(
+        model_prediction=None,
+        market_signal=None,
+        census_signal=None,
+        regional_signal=RegionalSignal(),
+        known_fact_count=0,
+    )
+
+    assert decision.estimate == 425000
+    assert decision.low == 297500
+    assert decision.high == 552500
+    assert decision.currency == "BRL"
+    assert decision.method == "Regional listing baseline: Mercado Libre MLB public search"
+    assert decision.used_model is False
+    assert format_price(decision.estimate, decision.currency) == "R$425,000"
 
 
 def test_render_page_escapes_values_and_shows_prediction():

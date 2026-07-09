@@ -42,7 +42,7 @@ DEFAULT_FORM_VALUES = {
     "city": "",
     "state": "",
     "neighborhood": "",
-    "zip_code": "78751",
+    "zip_code": "",
     "square_feet": "",
     "bedrooms": "",
     "bathrooms": "",
@@ -148,6 +148,24 @@ def format_currency(value: float) -> str:
     return f"${value:,.0f}"
 
 
+def format_price(value: float | None, currency: str = "USD") -> str:
+    if value is None:
+        return "Unavailable"
+    normalized = (currency or "USD").upper()
+    if normalized in {"", "USD"}:
+        return format_currency(value)
+    symbols = {
+        "BRL": "R$",
+        "CLP": "$",
+        "COP": "$",
+        "PEN": "S/",
+        "USD": "$",
+    }
+    symbol = symbols.get(normalized, "")
+    suffix = "" if symbol else f" {normalized}"
+    return f"{symbol}{value:,.0f}{suffix}"
+
+
 @dataclass(frozen=True)
 class EstimateDecision:
     estimate: float | None
@@ -157,6 +175,7 @@ class EstimateDecision:
     confidence: str
     known_fact_count: int
     used_model: bool
+    currency: str = "USD"
 
 
 def apply_address_location(values: dict[str, str], features: dict[str, object], location) -> None:
@@ -214,6 +233,7 @@ def decide_estimate(
     model_prediction: float | None,
     market_signal: object | None,
     census_signal: object | None,
+    regional_signal: object | None = None,
     known_fact_count: int,
 ) -> EstimateDecision:
     has_zillow = market_signal is not None
@@ -270,6 +290,21 @@ def decide_estimate(
             used_model=False,
         )
 
+    regional_average = getattr(regional_signal, "average_price", None)
+    if regional_average is not None and regional_average > 0:
+        listing_count = getattr(regional_signal, "listing_count", 0)
+        band = 0.30 if listing_count >= 5 else 0.42
+        return EstimateDecision(
+            estimate=regional_average,
+            low=regional_average * (1 - band),
+            high=regional_average * (1 + band),
+            method=f"Regional listing baseline: {getattr(regional_signal, 'source', 'public listing context')}",
+            confidence="Low",
+            known_fact_count=known_fact_count,
+            used_model=False,
+            currency=getattr(regional_signal, "currency", "") or "USD",
+        )
+
     return EstimateDecision(
         estimate=None,
         low=None,
@@ -309,7 +344,7 @@ def map_preview(
     layers = "".join(f"<li>{html.escape(item)}</li>" for item in source_items)
     range_text = "Run estimate"
     if decision is not None and decision.low is not None and decision.high is not None:
-        range_text = f"{format_currency(decision.low)} - {format_currency(decision.high)}"
+        range_text = f"{format_price(decision.low, decision.currency)} - {format_price(decision.high, decision.currency)}"
     zillow_text = "No ZIP value loaded"
     if market_signal is not None:
         zillow_text = f"{format_currency(market_signal.typical_home_value)} ZIP typical value"
@@ -516,7 +551,7 @@ def render_page(
             <dl class="market-card">
               <div><dt>Method</dt><dd>{html.escape(decision.method)}</dd></div>
               <div><dt>Confidence</dt><dd>{html.escape(decision.confidence)}</dd></div>
-              <div><dt>Estimated range</dt><dd>{format_currency(decision.low)} - {format_currency(decision.high)}</dd></div>
+              <div><dt>Estimated range</dt><dd>{format_price(decision.low, decision.currency)} - {format_price(decision.high, decision.currency)}</dd></div>
               <div><dt>Known property facts</dt><dd>{decision.known_fact_count} of {len(NUMERIC_FIELDS)}</dd></div>
             </dl>
             """
@@ -547,10 +582,14 @@ def render_page(
             market_note = """
             <p class="source-note">No Zillow or Census pricing signal was found for this ZIP, so this result uses the trained feature model only.</p>
             """
+        if not market_note and decision is not None and decision.estimate is not None:
+            market_note = """
+            <p class="source-note">This result uses regional public listing context. It is a broad market baseline, not an address-level appraisal or official assessed value.</p>
+            """
         result = f"""
         <section class="result" aria-live="polite">
           <span>Market-calibrated estimate</span>
-          <strong>{format_currency(prediction)}</strong>
+          <strong>{format_price(prediction, decision.currency if decision is not None else "USD")}</strong>
           {street_view_preview(address_location)}
           {map_preview(address_location, market_signal=market_signal, census_signal=census_signal, decision=decision)}
           {decision_note}
@@ -2033,6 +2072,7 @@ class AppHandler(BaseHTTPRequestHandler):
         model_prediction = None
         market_signal = None
         census_signal = None
+        regional_signal = None
         address_location = None
         decision = None
         if not errors:
@@ -2049,6 +2089,9 @@ class AppHandler(BaseHTTPRequestHandler):
                     if distance_miles is not None and values.get("distance_to_city_center_miles", "").lower() in {"", "unknown", "unkown", "uknown", "n/a", "na"}:
                         values["distance_to_city_center_miles"] = f"{distance_miles:.1f}"
                         features["distance_to_city_center_miles"] = distance_miles
+                    if address_location is not None and country != "United States":
+                        regional_query = " ".join(part for part in (address_location.city, address_location.state, country) if part)
+                        regional_signal = self.lookup_regional_listing_signal(regional_query, country=country)
                 prediction_features = finalize_prediction_features(features)
                 lookup_zip = str(values.get("zip_code", "") or prediction_features.get("zip_code", ""))
                 if country == "United States":
@@ -2061,11 +2104,12 @@ class AppHandler(BaseHTTPRequestHandler):
                     model_prediction=model_prediction,
                     market_signal=market_signal,
                     census_signal=census_signal,
+                    regional_signal=regional_signal,
                     known_fact_count=known_fact_count,
                 )
                 prediction = decision.estimate
                 if prediction is None:
-                    errors.append("Enter a verified address or select a map point so public location data can anchor the estimate.")
+                    errors.append("No public pricing baseline was found for this location. Add square feet, bedrooms, bathrooms, and lot size, or choose a more specific address suggestion.")
             except ValueError as exc:
                 errors.append(str(exc))
             except OSError:
@@ -2081,7 +2125,7 @@ class AppHandler(BaseHTTPRequestHandler):
                     )
                     prediction = decision.estimate
                 else:
-                    errors.append("Public data lookup failed, and there are not enough property facts to run a meaningful model estimate.")
+                    errors.append("The live public data lookup is temporarily unavailable. Add square feet, bedrooms, bathrooms, and lot size to run the property model, or try again after selecting a verified address suggestion.")
                 market_signal = None
                 census_signal = None
         self.respond_html(
