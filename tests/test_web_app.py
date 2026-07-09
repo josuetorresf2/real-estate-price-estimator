@@ -274,11 +274,11 @@ def test_geocode_route_returns_verified_location(monkeypatch):
                     }
                 },
                 "missing": {
-                    "square_feet": "Address-level square footage requires a property-record provider. Configure ATTOM_API_KEY to fill it when ATTOM returns living area.",
-                    "bedrooms": "Address-level bedrooms require a property-record provider such as ATTOM.",
-                    "bathrooms": "Address-level bathrooms require a property-record provider such as ATTOM.",
-                    "lot_size": "Address-level lot size requires a property-record provider such as ATTOM.",
-                    "year_built": "Address-level year built requires a property-record provider such as ATTOM.",
+                    "square_feet": "Square footage is unavailable from the current verified property-record sources.",
+                    "bedrooms": "Bedroom count is unavailable from the current verified property-record sources.",
+                    "bathrooms": "Bathroom count is unavailable from the current verified property-record sources.",
+                    "lot_size": "Lot size is unavailable from the current verified property-record sources.",
+                    "year_built": "Year built is unavailable from the current verified property-record sources.",
                     "school_rating": "School rating is not provided by Zillow Research or Census Geocoder.",
                     "crime_index": "Crime index is not provided by Zillow Research or Census Geocoder.",
                 },
