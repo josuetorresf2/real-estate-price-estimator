@@ -2172,7 +2172,11 @@ class AppHandler(BaseHTTPRequestHandler):
     def respond_suggestions(self, address: str, *, country: str = "United States", city: str = "", state: str = "", zip_code: str = "") -> None:
         query = enriched_address_query(address, city=city, state=state, zip_code=zip_code)
         try:
-            matches = self.lookup_autocomplete_matches(query, country=country) or self.lookup_address_matches(query, country=country)
+            matches = (
+                self.lookup_autocomplete_matches(query, country=country)
+                or nominatim_address_matches(query, country=country)
+                or self.lookup_address_matches(query, country=country)
+            )
         except OSError:
             matches = []
         self.respond_json({"suggestions": [location_payload(match) for match in matches[:5]]})

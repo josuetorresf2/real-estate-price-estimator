@@ -323,6 +323,27 @@ def test_suggest_route_returns_address_options(monkeypatch):
     assert responses[0]["suggestions"][0]["matched_address"] == "5324 AVENUE F, AUSTIN, TX, 78751"
 
 
+def test_suggest_route_uses_public_fallback_for_short_fragments(monkeypatch):
+    responses = []
+    location = AddressLocation(
+        city="Austin",
+        state="TX",
+        zip_code="78753",
+        matched_address="5324 EXAMPLE RD, AUSTIN, TX, 78753",
+    )
+
+    monkeypatch.setattr(AppHandler, "lookup_autocomplete_matches", lambda self, address, country="United States": [])
+    monkeypatch.setattr("real_estate_price_estimator.web_app.nominatim_address_matches", lambda address, country="United States": [location])
+    monkeypatch.setattr(AppHandler, "respond_json", lambda self, payload: responses.append(payload))
+
+    handler = object.__new__(AppHandler)
+    handler.path = "/api/suggest?address=5324&country=United%20States"
+
+    handler.do_GET()
+
+    assert responses[0]["suggestions"][0]["matched_address"] == "5324 EXAMPLE RD, AUSTIN, TX, 78753"
+
+
 def test_reverse_geocode_route_returns_selected_map_point(monkeypatch):
     responses = []
     location = AddressLocation(
