@@ -203,7 +203,7 @@ def test_get_predict_route_renders_app(monkeypatch):
 
     assert responses
     assert responses[0] != HTTPStatus.NOT_FOUND
-    assert "Real Estate Price Estimator" in responses[0]
+    assert "Property Valuation Workbench" in responses[0]
 
 
 def test_geocode_route_returns_verified_location(monkeypatch):

@@ -512,7 +512,7 @@ def render_page(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Real Estate Price Estimator</title>
+  <title>Property Valuation Workbench</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -624,10 +624,7 @@ def render_page(
       z-index: 2;
     }}
     .hero-heading {{
-      background: linear-gradient(180deg, #646973 0%, #bbccd7 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
+      color: #f7fafc;
     }}
     main {{
       width: min(1180px, calc(100% - 32px));
@@ -690,10 +687,36 @@ def render_page(
     }}
     header p {{
       margin: 0;
-      max-width: 330px;
+      max-width: 390px;
       color: var(--muted);
       line-height: 1.45;
       font-size: 1rem;
+    }}
+    .signal-strip {{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }}
+    .signal-strip div {{
+      border: 1px solid rgba(215, 226, 234, 0.13);
+      border-radius: 8px;
+      background: rgba(11, 18, 32, 0.76);
+      padding: 12px;
+    }}
+    .signal-strip span {{
+      display: block;
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }}
+    .signal-strip strong {{
+      display: block;
+      margin-top: 4px;
+      color: white;
+      font-size: 0.94rem;
+      line-height: 1.2;
     }}
     form {{
       background: transparent;
@@ -787,6 +810,9 @@ def render_page(
     }}
     .actions > * {{
       position: relative;
+    }}
+    .scene {{
+      display: none;
     }}
     button {{
       min-height: 46px;
@@ -1135,6 +1161,63 @@ def render_page(
       height: 1px;
       background: linear-gradient(90deg, transparent, rgba(182, 0, 168, 0.85), rgba(190, 76, 0, 0.75), transparent);
     }}
+    /* Product-workbench visual pass: keep the app focused on evidence, not spectacle. */
+    body {{
+      background:
+        radial-gradient(circle at 18% 0%, rgba(45, 89, 134, 0.24), transparent 32%),
+        linear-gradient(180deg, #0b1220 0%, #0f172a 55%, #10131a 100%);
+    }}
+    #cityScene {{
+      opacity: 0.1;
+    }}
+    .scene-vignette {{
+      background:
+        linear-gradient(90deg, rgba(11, 18, 32, 0.96), rgba(15, 23, 42, 0.7) 52%, rgba(11, 18, 32, 0.92)),
+        linear-gradient(180deg, rgba(11, 18, 32, 0.35), rgba(11, 18, 32, 0.96));
+    }}
+    body::before {{
+      opacity: 0.4;
+      background-size: 48px 48px;
+    }}
+    h1 {{
+      max-width: 780px;
+      font-size: clamp(2.8rem, 7vw, 6.2rem);
+      line-height: 0.92;
+    }}
+    .surface {{
+      background:
+        linear-gradient(180deg, rgba(148, 163, 184, 0.08), rgba(15, 23, 42, 0.88)),
+        rgba(15, 23, 42, 0.9);
+      box-shadow: 0 26px 80px rgba(0, 0, 0, 0.38);
+    }}
+    .grid {{
+      background: rgba(2, 6, 23, 0.24);
+    }}
+    label {{
+      background: rgba(15, 23, 42, 0.74);
+      border-color: rgba(148, 163, 184, 0.18);
+    }}
+    .actions {{
+      background:
+        linear-gradient(180deg, rgba(30, 41, 59, 0.86), rgba(15, 23, 42, 0.96));
+    }}
+    .actions::before {{
+      border-color: rgba(56, 189, 248, 0.32);
+    }}
+    .scene {{
+      display: none;
+    }}
+    button {{
+      background: #f8fafc;
+      color: #0f172a;
+      outline: 0;
+      box-shadow: none;
+      font-weight: 800;
+    }}
+    button:hover {{
+      background: #dbeafe;
+      filter: none;
+    }}
     @media (max-width: 820px) {{
       header {{ align-items: stretch; flex-direction: column; }}
       header p, .result {{ max-width: none; text-align: left; }}
@@ -1162,17 +1245,24 @@ def render_page(
   <span class="easteregg" aria-hidden="true">Joshue Torres</span>
   <main>
     <nav aria-label="Primary">
-      <a href="#estimate">Estimate</a>
-      <a href="https://www.zillow.com/research/data/" target="_blank" rel="noreferrer">Zillow Data</a>
-      <a href="#market">Market Signal</a>
-      <a href="#contact">Contact</a>
+      <a href="#estimate">Workbench</a>
+      <a href="https://www.zillow.com/research/data/" target="_blank" rel="noreferrer">Data</a>
+      <a href="#market">Sources</a>
+      <a href="#contact">Deploy</a>
     </nav>
     <header>
       <div>
-        <h1 class="hero-heading">Real Estate Price Estimator</h1>
+        <span class="eyebrow">Evidence-first valuation system</span>
+        <h1 class="hero-heading">Property Valuation Workbench</h1>
       </div>
-      <p>Navigate property signals through a premium 3D pricing interface.</p>
+      <p>Verify an address, inspect public data coverage, and generate a transparent estimate with model and market-source reasoning.</p>
     </header>
+    <section class="signal-strip" aria-label="System capabilities">
+      <div><span>Address resolution</span><strong>Census verified</strong></div>
+      <div><span>Market anchor</span><strong>Zillow ZIP ZHVI</strong></div>
+      <div><span>Model policy</span><strong>No fake precision</strong></div>
+      <div><span>Deployment</span><strong>Docker + Render</strong></div>
+    </section>
     <form id="estimate" method="post" action="/predict">
       {f'<ul class="errors">{error_items}</ul>' if error_items else ''}
       <div class="surface">

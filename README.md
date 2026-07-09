@@ -1,6 +1,6 @@
 # Real Estate Price Estimator
 
-A premium 3D web app and regression pipeline for estimating U.S. home sale prices from user-entered property facts, ZIP-level market signals, and public government location data.
+A production-style valuation workbench and regression pipeline for estimating U.S. home prices from verified addresses, ZIP-level market signals, optional property-record APIs, and public government location data.
 
 ![Estimator hero](docs/images/estimator-hero.jpg)
 
@@ -18,7 +18,7 @@ A premium 3D web app and regression pipeline for estimating U.S. home sale price
 - Optionally blends U.S. Census ACS median home value when `CENSUS_API_KEY` is configured.
 - Optionally shows real exterior context through Google Street View Static API when `GOOGLE_STREET_VIEW_API_KEY` is configured.
 - Shows an Engrain-inspired property map panel with a selected-property marker, market layers, source badges, Mapbox satellite-streets imagery when `MAPBOX_ACCESS_TOKEN` is configured, and OpenStreetMap fallback context.
-- Runs a premium animated 3D interface with a locally bundled Three.js module, so the scene does not depend on a CDN.
+- Presents the estimate as an evidence-first product workflow: address resolution, source coverage, model decision, map context, and deployment path.
 
 ![Estimate result](docs/images/estimate-result.jpg)
 
