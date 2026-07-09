@@ -32,6 +32,16 @@ Short fragments such as `5324` return broad address options. Add city/country to
 
 ![Estimator hero](docs/images/estimator-hero.jpg)
 
+## Current App Experience
+
+The web app now opens as a dark glass valuation workbench with a 3D animated background, live loading state, source-status panels, map preview, and an evidence-first estimate card.
+
+- The country control is a real dropdown, so users can click the arrow or use the keyboard to move between supported markets.
+- Changing the country clears the previous address, city, region, postal code, property facts, suggestions, map context, and estimate result so stale U.S. data does not remain on a South America search.
+- The address field supports autocomplete-style suggestions and accepts short fragments when the user does not know the exact address.
+- The right-side panel refreshes into live address intelligence with map context, verified location fields, regional signals, and provider-backed property facts when available.
+- Unknown fields are allowed, but the app labels missing data instead of hiding uncertainty.
+
 ## Tech Stack
 
 - Python standard-library web server
@@ -50,6 +60,7 @@ Short fragments such as `5324` return broad address options. Add city/country to
 ## Core Features
 
 - Country-aware address verification for the United States, Ecuador, Brazil, Peru, Colombia, and Chile.
+- Keyboard-friendly country dropdown that resets stale address data when the market changes.
 - Live address suggestions, including short-fragment fallback through public geocoding.
 - City, state/province, ZIP/postal code, latitude, and longitude enrichment.
 - Map preview with map-click reverse geocoding for location refinement.

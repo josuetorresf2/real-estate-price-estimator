@@ -35,6 +35,7 @@ DEFAULT_MODEL_PATH = PROJECT_ROOT / "models" / "price_pipeline.joblib"
 DEFAULT_DATA_PATH = PROJECT_ROOT / "data" / "sample_housing.csv"
 DEFAULT_ZHVI_PATH = PROJECT_ROOT / "data" / "zillow_zhvi_zip.csv"
 STATIC_ROOT = PROJECT_ROOT / "static"
+SUPPORTED_COUNTRIES = ("United States", "Ecuador", "Brazil", "Peru", "Colombia", "Chile")
 
 DEFAULT_FORM_VALUES = {
     "country": "United States",
@@ -530,6 +531,28 @@ def enriched_address_query(address: str, *, city: str = "", state: str = "", zip
     return " ".join(parts).strip()
 
 
+def render_form_field(field: str, label: str, form_values: dict[str, str]) -> str:
+    value = form_values.get(field, "")
+    if field == "country":
+        options = "\n".join(
+            f'<option value="{html.escape(country)}"{" selected" if country == value else ""}>{html.escape(country)}</option>'
+            for country in SUPPORTED_COUNTRIES
+        )
+        control = f'<select name="{field}" autocomplete="country-name">{options}</select>'
+    else:
+        control = f'<input name="{field}" value="{html.escape(value)}" {input_attributes(field)}>'
+    return f"""
+        <label class="{field}">
+          <span>{html.escape(label)}</span>
+          {control}
+          {field_help(field)}
+          {address_status(field)}
+          {address_suggestions(field)}
+          {field_status(field)}
+        </label>
+        """
+
+
 def render_page(
     values: dict[str, str] | None = None,
     *,
@@ -609,19 +632,7 @@ def render_page(
         </section>
         """
 
-    fields = "\n".join(
-        f"""
-        <label class="{field}">
-          <span>{html.escape(label)}</span>
-          <input name="{field}" value="{html.escape(form_values.get(field, ''))}" {input_attributes(field)}>
-          {field_help(field)}
-          {address_status(field)}
-          {address_suggestions(field)}
-          {field_status(field)}
-        </label>
-        """
-        for field, label in FIELD_LABELS.items()
-    )
+    fields = "\n".join(render_form_field(field, label, form_values) for field, label in FIELD_LABELS.items())
 
     return f"""<!doctype html>
 <html lang="en">
@@ -882,7 +893,8 @@ def render_page(
       text-transform: uppercase;
       letter-spacing: 0;
     }}
-    input {{
+    input,
+    select {{
       width: 100%;
       min-height: 34px;
       border: 0;
@@ -895,7 +907,16 @@ def render_page(
       font-size: 1.05rem;
       font-weight: 650;
     }}
-    input:focus {{
+    select {{
+      cursor: pointer;
+      appearance: auto;
+    }}
+    select option {{
+      background: #111318;
+      color: var(--ink);
+    }}
+    input:focus,
+    select:focus {{
       outline: 0;
       border-color: var(--accent);
     }}
@@ -1562,14 +1583,6 @@ def render_page(
       <div><span>Deployment</span><strong>Docker + Render</strong></div>
     </section>
     <form id="estimate" method="post" action="/predict">
-      <datalist id="countryOptions">
-        <option value="United States"></option>
-        <option value="Ecuador"></option>
-        <option value="Brazil"></option>
-        <option value="Peru"></option>
-        <option value="Colombia"></option>
-        <option value="Chile"></option>
-      </datalist>
       {f'<ul class="errors">{error_items}</ul>' if error_items else ''}
       <div class="surface">
         <div class="grid">
@@ -1598,15 +1611,17 @@ def render_page(
     }});
 
     const addressInput = document.querySelector('input[name="address"]');
-    const countryInput = document.querySelector('input[name="country"]');
+    const countryInput = document.querySelector('[name="country"]');
     const cityInput = document.querySelector('input[name="city"]');
     const stateInput = document.querySelector('input[name="state"]');
     const zipInput = document.querySelector('input[name="zip_code"]');
     const addressStatus = document.querySelector("[data-address-status]");
     const addressSuggestions = document.querySelector("[data-address-suggestions]");
-    const liveContext = document.querySelector("[data-live-context]");
+    let liveContext = document.querySelector("[data-live-context]");
     let addressTimer;
     let addressController;
+    let selectedCountry = countryInput?.value.trim() || "United States";
+    const supportedCountries = new Set({json.dumps(list(SUPPORTED_COUNTRIES))});
 
     function setAddressStatus(message, state = "") {{
       if (!addressStatus) return;
@@ -1637,6 +1652,61 @@ def render_page(
       return element.innerHTML;
     }}
 
+    function emptyResultContent() {{
+      return `
+        <strong>Live market estimate</strong>
+        <p class="note">Enter an address or postal code. Unknown property facts are allowed and handled only when public data does not include them.</p>
+        <div class="live-context" data-live-context>
+          <span>Address intelligence</span>
+          <p>Verify an address to load the property map, city/region, postal code, distance, and data-source status.</p>
+        </div>
+      `;
+    }}
+
+    function resetResultPanel() {{
+      const panel = document.querySelector(".result, .empty-result");
+      if (!panel) return;
+      panel.className = "empty-result";
+      panel.setAttribute("aria-live", "polite");
+      panel.innerHTML = emptyResultContent();
+      liveContext = document.querySelector("[data-live-context]");
+    }}
+
+    function clearFieldStatuses() {{
+      document.querySelectorAll("[data-field-status]").forEach((element) => {{
+        element.textContent = "";
+        element.dataset.state = "";
+      }});
+    }}
+
+    function clearAddressDataForCountryChange() {{
+      if (addressController) addressController.abort();
+      clearTimeout(addressTimer);
+      [
+        "address",
+        "city",
+        "state",
+        "neighborhood",
+        "zip_code",
+        "square_feet",
+        "bedrooms",
+        "bathrooms",
+        "lot_size",
+        "year_built",
+        "school_rating",
+        "distance_to_city_center_miles",
+        "crime_index",
+      ].forEach((field) => {{
+        const input = fieldInput(field);
+        if (input) input.value = "";
+      }});
+      renderSuggestions([]);
+      clearFieldStatuses();
+      resetResultPanel();
+      setAddressStatus(`Country changed to ${{countryInput.value.trim() || "the selected market"}}. Start with an address, place, or postal code.`, "matched");
+      addressInput?.focus();
+    }}
+
     function applyEnrichment(payload) {{
       const fields = payload.property_facts?.fields || {{}};
       const missing = payload.property_facts?.missing || {{}};
@@ -1656,6 +1726,7 @@ def render_page(
     }}
 
     function renderLiveContext(payload) {{
+      liveContext = document.querySelector("[data-live-context]");
       if (!liveContext || !payload.matched) return;
       const lat = Number(payload.latitude);
       const lon = Number(payload.longitude);
@@ -1808,7 +1879,7 @@ def render_page(
           verifyAddress();
         }}, 650);
       }});
-      liveContext?.addEventListener("click", (event) => {{
+      document.addEventListener("click", (event) => {{
         const target = event.target.closest("[data-selectable-map]");
         if (!target) return;
         const rect = target.getBoundingClientRect();
@@ -1824,6 +1895,21 @@ def render_page(
         selectMapPoint(selectedLat, selectedLon);
       }});
       setAddressStatus("Type an address, place name, or postal code. You can also choose from verified options.");
+    }}
+
+    if (countryInput) {{
+      countryInput.addEventListener("input", () => {{
+        const nextCountry = countryInput.value.trim();
+        if (!supportedCountries.has(nextCountry) || nextCountry === selectedCountry) return;
+        selectedCountry = nextCountry;
+        clearAddressDataForCountryChange();
+      }});
+      countryInput.addEventListener("change", () => {{
+        const nextCountry = countryInput.value.trim() || "United States";
+        if (!supportedCountries.has(nextCountry) || nextCountry === selectedCountry) return;
+        selectedCountry = nextCountry;
+        clearAddressDataForCountryChange();
+      }});
     }}
 
     const canvas = document.getElementById("cityScene");

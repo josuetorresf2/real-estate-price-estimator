@@ -148,6 +148,14 @@ def test_render_page_escapes_values_and_shows_prediction():
     assert "$515,000" in page
 
 
+def test_render_page_uses_country_select():
+    page = render_page({"country": "Brazil"})
+
+    assert '<select name="country"' in page
+    assert '<option value="Brazil" selected>Brazil</option>' in page
+    assert 'input name="country"' not in page
+
+
 def test_format_currency_rounds_to_whole_dollars():
     assert format_currency(1211164.76) == "$1,211,165"
 
