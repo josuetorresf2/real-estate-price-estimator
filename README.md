@@ -13,6 +13,7 @@ A production-style valuation workbench and regression pipeline for estimating U.
 - Verifies addresses as users type, shows address candidates, and updates city, state, and ZIP when a match is found.
 - Supports richer autocomplete through `GEOAPIFY_API_KEY`, with Census Geocoder as the no-key fallback.
 - Optionally fills address-level square feet, bedrooms, bathrooms, lot size, and year built through `ATTOM_API_KEY`.
+- Optionally fills neighborhood/suburb from Geoapify when `GEOAPIFY_API_KEY` returns that signal.
 - Calculates miles to city center from Census Geocoder coordinates when available.
 - Calibrates estimates with Zillow Research ZIP-level ZHVI data when available.
 - Optionally blends U.S. Census ACS median home value when `CENSUS_API_KEY` is configured.
@@ -103,7 +104,7 @@ export MAPBOX_ACCESS_TOKEN=your_mapbox_token_here
 PYTHONPATH=src python -m real_estate_price_estimator.web_app --port 8000
 ```
 
-When `GEOAPIFY_API_KEY` is set, partial address input can return real autocomplete suggestions. When `ATTOM_API_KEY` is set, the live address lookup can fill square feet, bedrooms, bathrooms, lot size, and year built from property records. When `GOOGLE_STREET_VIEW_API_KEY` is set, result pages can show real Street View exterior context for the verified address. When `MAPBOX_ACCESS_TOKEN` is set, live and result maps use Mapbox satellite-streets imagery; otherwise the app falls back to OpenStreetMap.
+When `GEOAPIFY_API_KEY` is set, partial address input can return real autocomplete suggestions and may fill neighborhood/suburb when Geoapify returns that field. When `ATTOM_API_KEY` is set, the live address lookup can fill square feet, bedrooms, bathrooms, lot size, and year built from property records. When `GOOGLE_STREET_VIEW_API_KEY` is set, result pages can show real Street View exterior context for the verified address. When `MAPBOX_ACCESS_TOKEN` is set, live and result maps use Mapbox satellite-streets imagery; otherwise the app falls back to OpenStreetMap.
 
 ## Docker
 

@@ -175,6 +175,31 @@ def geoapify_address_suggestions(
     return [_address_location_from_geoapify(result) for result in results]
 
 
+def geoapify_neighborhood_for_address(address: str, *, api_key: str | None = None, timeout: float = 8) -> str | None:
+    key = api_key or os.getenv("GEOAPIFY_API_KEY")
+    if not key or not address.strip():
+        return None
+    query = urlencode(
+        {
+            "text": address,
+            "filter": "countrycode:us",
+            "limit": "1",
+            "format": "json",
+            "apiKey": key,
+        }
+    )
+    request = Request(
+        f"{GEOAPIFY_AUTOCOMPLETE_URL}?{query}",
+        headers={"User-Agent": "real-estate-price-estimator/0.1"},
+    )
+    with urlopen(request, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    results = payload.get("results", [])
+    if not results:
+        return None
+    return _neighborhood_from_geoapify(results[0])
+
+
 def property_facts_for_address(address: str, *, api_key: str | None = None, timeout: float = 8) -> PropertyFacts | None:
     key = api_key or os.getenv("ATTOM_API_KEY")
     if not key or not address.strip():
@@ -307,6 +332,14 @@ def _address_location_from_geoapify(result: dict[str, object]) -> AddressLocatio
         longitude=_as_float(result.get("lon")),
         source="Geoapify Address Autocomplete",
     )
+
+
+def _neighborhood_from_geoapify(result: dict[str, object]) -> str | None:
+    for key in ("neighbourhood", "neighborhood", "suburb", "district", "quarter"):
+        value = result.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
 
 
 def _get_path(payload: dict[str, object], path: tuple[str, ...]) -> object | None:

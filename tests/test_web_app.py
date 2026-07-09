@@ -4,6 +4,7 @@ from real_estate_price_estimator.market_data import AddressLocation, PropertyFac
 from real_estate_price_estimator.web_app import (
     AppHandler,
     apply_address_location,
+    apply_neighborhood,
     apply_property_facts,
     address_suggestions,
     address_status,
@@ -163,6 +164,16 @@ def test_apply_property_facts_fills_unknown_inputs():
     assert features["lot_size"] == 0.19
 
 
+def test_apply_neighborhood_fills_unknown_value():
+    values = {"neighborhood": "unknown"}
+    features = {}
+
+    apply_neighborhood(values, features, "Old North End")
+
+    assert values["neighborhood"] == "Old North End"
+    assert features["neighborhood"] == "Old North End"
+
+
 def test_map_preview_renders_openstreetmap_if_coordinates_exist():
     location = AddressLocation(
         city="Washington",
@@ -221,6 +232,7 @@ def test_geocode_route_returns_verified_location(monkeypatch):
     queries = []
     monkeypatch.setattr(AppHandler, "lookup_address_matches", lambda self, address: queries.append(address) or [location])
     monkeypatch.setattr(AppHandler, "lookup_property_facts", lambda self, address: None)
+    monkeypatch.setattr(AppHandler, "lookup_neighborhood", lambda self, address: "Downtown")
     monkeypatch.setattr(AppHandler, "lookup_distance_to_city_center", lambda self, location: 1.4)
     monkeypatch.setattr(AppHandler, "respond_json", lambda self, payload: responses.append(payload))
 
@@ -255,11 +267,14 @@ def test_geocode_route_returns_verified_location(monkeypatch):
                     "distance_to_city_center_miles": {
                         "value": "1.4",
                         "source": "Calculated from U.S. Census Geocoder coordinates",
+                    },
+                    "neighborhood": {
+                        "value": "Downtown",
+                        "source": "Geoapify neighborhood/suburb signal",
                     }
                 },
                 "missing": {
-                    "neighborhood": "Neighborhood is not returned by Zillow Research or Census Geocoder.",
-                    "square_feet": "Address-level square footage requires a property-record provider such as ATTOM.",
+                    "square_feet": "Address-level square footage requires a property-record provider. Configure ATTOM_API_KEY to fill it when ATTOM returns living area.",
                     "bedrooms": "Address-level bedrooms require a property-record provider such as ATTOM.",
                     "bathrooms": "Address-level bathrooms require a property-record provider such as ATTOM.",
                     "lot_size": "Address-level lot size requires a property-record provider such as ATTOM.",

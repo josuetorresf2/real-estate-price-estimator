@@ -18,6 +18,7 @@ from .market_data import (
     geocode_address,
     geocode_address_matches,
     geoapify_address_suggestions,
+    geoapify_neighborhood_for_address,
     latest_zhvi_for_zip,
     market_calibrated_estimate,
     property_facts_for_address,
@@ -172,6 +173,14 @@ def apply_property_facts(values: dict[str, str], features: dict[str, object], fa
         values[field] = value
         if field in NUMERIC_FIELDS:
             features[field] = NUMERIC_FIELDS[field](value)
+
+
+def apply_neighborhood(values: dict[str, str], features: dict[str, object], neighborhood: str | None) -> None:
+    if not neighborhood:
+        return
+    if values.get("neighborhood", "").strip().lower() in {"", "unknown", "unkown", "uknown", "n/a", "na"}:
+        values["neighborhood"] = neighborhood
+        features["neighborhood"] = neighborhood
 
 
 def finalize_prediction_features(features: dict[str, object]) -> dict[str, object]:
@@ -368,8 +377,10 @@ def street_view_url(address_location: object | None) -> str:
     return f"https://maps.googleapis.com/maps/api/streetview?{query}"
 
 
-def property_fact_payload(facts, distance_miles: float | None) -> dict[str, object]:
+def property_fact_payload(facts, distance_miles: float | None, neighborhood: str | None = None) -> dict[str, object]:
     fields: dict[str, dict[str, str]] = {}
+    if neighborhood:
+        fields["neighborhood"] = {"value": neighborhood, "source": "Geoapify neighborhood/suburb signal"}
     if facts is not None:
         for field, value in facts.as_form_values().items():
             fields[field] = {"value": value, "source": facts.source}
@@ -379,8 +390,8 @@ def property_fact_payload(facts, distance_miles: float | None) -> dict[str, obje
             "source": "Calculated from U.S. Census Geocoder coordinates",
         }
     missing = {
-        "neighborhood": "Neighborhood is not returned by Zillow Research or Census Geocoder.",
-        "square_feet": "Address-level square footage requires a property-record provider such as ATTOM.",
+        "neighborhood": "Neighborhood is not returned by Zillow Research or Census Geocoder. Configure GEOAPIFY_API_KEY to fill it when Geoapify returns a neighborhood or suburb.",
+        "square_feet": "Address-level square footage requires a property-record provider. Configure ATTOM_API_KEY to fill it when ATTOM returns living area.",
         "bedrooms": "Address-level bedrooms require a property-record provider such as ATTOM.",
         "bathrooms": "Address-level bathrooms require a property-record provider such as ATTOM.",
         "lot_size": "Address-level lot size requires a property-record provider such as ATTOM.",
@@ -1868,11 +1879,13 @@ class AppHandler(BaseHTTPRequestHandler):
         decision = None
         if not errors:
             try:
-                if values.get("address") and (not values.get("city") or not values.get("state") or not values.get("zip_code")):
+                if values.get("address"):
                     address_location = self.lookup_address(values["address"])
                     apply_address_location(values, features, address_location)
                     property_facts = self.lookup_property_facts(values["address"])
                     apply_property_facts(values, features, property_facts)
+                    neighborhood = self.lookup_neighborhood(values["address"])
+                    apply_neighborhood(values, features, neighborhood)
                     distance_miles = self.lookup_distance_to_city_center(address_location) if address_location is not None else None
                     if distance_miles is not None and values.get("distance_to_city_center_miles", "").lower() in {"", "unknown", "unkown", "uknown", "n/a", "na"}:
                         values["distance_to_city_center_miles"] = f"{distance_miles:.1f}"
@@ -1949,6 +1962,12 @@ class AppHandler(BaseHTTPRequestHandler):
         except OSError:
             return None
 
+    def lookup_neighborhood(self, address: str):
+        try:
+            return geoapify_neighborhood_for_address(address)
+        except OSError:
+            return None
+
     def lookup_distance_to_city_center(self, location):
         try:
             return distance_to_city_center_miles(location)
@@ -1974,13 +1993,14 @@ class AppHandler(BaseHTTPRequestHandler):
             self.respond_json({"matched": False})
             return
         property_facts = self.lookup_property_facts(address)
+        neighborhood = self.lookup_neighborhood(address)
         distance_miles = self.lookup_distance_to_city_center(location)
         self.respond_json(
             {
                 "matched": True,
                 **location_payload(location),
                 "suggestions": [location_payload(match) for match in suggestions[:5]],
-                "property_facts": property_fact_payload(property_facts, distance_miles),
+                "property_facts": property_fact_payload(property_facts, distance_miles, neighborhood),
                 "street_view_url": street_view_url(location),
                 "mapbox_static_url": mapbox_static_url(location),
             }
