@@ -15,12 +15,53 @@ CENSUS_ACS_URL = "https://api.census.gov/data/{year}/acs/acs5"
 CENSUS_ACS_YEAR = "2023"
 ATTOM_PROPERTY_URL = "https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/expandedprofile"
 GEOAPIFY_AUTOCOMPLETE_URL = "https://api.geoapify.com/v1/geocode/autocomplete"
+NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
+MERCADOLIBRE_SEARCH_URL = "https://api.mercadolibre.com/sites/{site_id}/search"
+WORLD_BANK_URL = "https://api.worldbank.org/v2/country/{country_code}/indicator/{indicator}"
+COUNTRY_CODES = {
+    "United States": "us",
+    "Ecuador": "ec",
+    "Brazil": "br",
+    "Peru": "pe",
+    "Colombia": "co",
+    "Chile": "cl",
+}
+MERCADOLIBRE_SITES = {
+    "Ecuador": "MEC",
+    "Brazil": "MLB",
+    "Peru": "MPE",
+    "Colombia": "MCO",
+    "Chile": "MLC",
+}
+WORLD_BANK_COUNTRIES = {
+    "Ecuador": "ECU",
+    "Brazil": "BRA",
+    "Peru": "PER",
+    "Colombia": "COL",
+    "Chile": "CHL",
+}
+WORLD_BANK_INDICATORS = {
+    "gdp_per_capita_usd": "NY.GDP.PCAP.CD",
+    "urban_population_pct": "SP.URB.TOTL.IN.ZS",
+}
 CITY_CENTERS = {
     ("AUSTIN", "TX"): (30.2672, -97.7431),
     ("DENVER", "CO"): (39.7392, -104.9903),
     ("COLORADO SPRINGS", "CO"): (38.8339, -104.8214),
     ("ATLANTA", "GA"): (33.7490, -84.3880),
     ("WASHINGTON", "DC"): (38.9072, -77.0369),
+    ("QUITO", "PICHINCHA"): (-0.1807, -78.4678),
+    ("GUAYAQUIL", "GUAYAS"): (-2.1894, -79.8891),
+    ("SAO PAULO", "SP"): (-23.5558, -46.6396),
+    ("SAO PAULO", "SÃO PAULO"): (-23.5558, -46.6396),
+    ("RIO DE JANEIRO", "RJ"): (-22.9068, -43.1729),
+    ("LIMA", "LIMA"): (-12.0464, -77.0428),
+    ("BOGOTA", "BOGOTA"): (4.7110, -74.0721),
+    ("BOGOTÁ", "BOGOTÁ D.C."): (4.7110, -74.0721),
+    ("MEDELLIN", "ANTIOQUIA"): (6.2442, -75.5812),
+    ("MEDELLÍN", "ANTIOQUIA"): (6.2442, -75.5812),
+    ("SANTIAGO", "REGION METROPOLITANA"): (-33.4489, -70.6693),
+    ("SANTIAGO", "REGIÓN METROPOLITANA"): (-33.4489, -70.6693),
 }
 
 
@@ -75,6 +116,24 @@ class PropertyFacts:
         return {key: value for key, value in values.items() if value}
 
 
+@dataclass(frozen=True)
+class RegionalListingSignal:
+    country: str
+    source: str
+    listing_count: int
+    average_price: float | None
+    currency: str
+    sample_titles: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class RegionalMacroSignal:
+    country: str
+    source: str
+    values: dict[str, float]
+    years: dict[str, str]
+
+
 def ensure_zhvi_csv(cache_path: Path, *, source_url: str = ZHVI_ZIP_URL) -> Path:
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     if not cache_path.exists() or cache_path.stat().st_size == 0:
@@ -123,6 +182,13 @@ def geocode_address(address: str, *, timeout: float = 8) -> AddressLocation | No
     return matches[0] if matches else None
 
 
+def geocode_address_global(address: str, *, country: str = "United States", timeout: float = 8) -> AddressLocation | None:
+    if country == "United States":
+        return geocode_address(address, timeout=timeout)
+    matches = nominatim_address_matches(address, country=country, timeout=timeout)
+    return matches[0] if matches else None
+
+
 def geocode_address_matches(address: str, *, timeout: float = 8) -> list[AddressLocation]:
     if not address.strip():
         return []
@@ -146,9 +212,31 @@ def geocode_address_matches(address: str, *, timeout: float = 8) -> list[Address
     return [_address_location_from_match(match) for match in matches]
 
 
+def nominatim_address_matches(address: str, *, country: str = "United States", timeout: float = 8) -> list[AddressLocation]:
+    if not address.strip():
+        return []
+    query = urlencode(
+        {
+            "q": f"{address}, {country}",
+            "format": "jsonv2",
+            "addressdetails": "1",
+            "limit": "5",
+            "countrycodes": COUNTRY_CODES.get(country, ""),
+        }
+    )
+    request = Request(
+        f"{NOMINATIM_SEARCH_URL}?{query}",
+        headers={"User-Agent": "real-estate-price-estimator/0.1 (portfolio project)"},
+    )
+    with urlopen(request, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    return [_address_location_from_nominatim(item) for item in payload]
+
+
 def geoapify_address_suggestions(
     query_text: str,
     *,
+    country: str = "United States",
     api_key: str | None = None,
     limit: int = 5,
     timeout: float = 8,
@@ -159,7 +247,7 @@ def geoapify_address_suggestions(
     query = urlencode(
         {
             "text": query_text,
-            "filter": "countrycode:us",
+            "filter": f"countrycode:{COUNTRY_CODES.get(country, 'us')}",
             "limit": str(limit),
             "format": "json",
             "apiKey": key,
@@ -175,14 +263,14 @@ def geoapify_address_suggestions(
     return [_address_location_from_geoapify(result) for result in results]
 
 
-def geoapify_neighborhood_for_address(address: str, *, api_key: str | None = None, timeout: float = 8) -> str | None:
+def geoapify_neighborhood_for_address(address: str, *, country: str = "United States", api_key: str | None = None, timeout: float = 8) -> str | None:
     key = api_key or os.getenv("GEOAPIFY_API_KEY")
     if not key or not address.strip():
         return None
     query = urlencode(
         {
             "text": address,
-            "filter": "countrycode:us",
+            "filter": f"countrycode:{COUNTRY_CODES.get(country, 'us')}",
             "limit": "1",
             "format": "json",
             "apiKey": key,
@@ -198,6 +286,68 @@ def geoapify_neighborhood_for_address(address: str, *, api_key: str | None = Non
     if not results:
         return None
     return _neighborhood_from_geoapify(results[0])
+
+
+def regional_listing_signal(query_text: str, *, country: str, timeout: float = 8) -> RegionalListingSignal | None:
+    site_id = MERCADOLIBRE_SITES.get(country)
+    if not site_id or not query_text.strip():
+        return None
+    query = urlencode({"q": f"inmueble {query_text}", "limit": "12"})
+    request = Request(
+        f"{MERCADOLIBRE_SEARCH_URL.format(site_id=site_id)}?{query}",
+        headers={"User-Agent": "real-estate-price-estimator/0.1"},
+    )
+    with urlopen(request, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    results = payload.get("results", [])
+    prices = [_as_float(item.get("price")) for item in results]
+    prices = [price for price in prices if price is not None and price > 0]
+    currency = ""
+    for item in results:
+        currency = item.get("currency_id") or currency
+        if currency:
+            break
+    average_price = sum(prices) / len(prices) if prices else None
+    sample_titles = tuple(str(item.get("title", "")) for item in results[:3] if item.get("title"))
+    return RegionalListingSignal(
+        country=country,
+        source=f"Mercado Libre {site_id} public search",
+        listing_count=len(results),
+        average_price=average_price,
+        currency=currency,
+        sample_titles=sample_titles,
+    )
+
+
+def regional_macro_signal(country: str, *, timeout: float = 8) -> RegionalMacroSignal | None:
+    country_code = WORLD_BANK_COUNTRIES.get(country)
+    if not country_code:
+        return None
+    values: dict[str, float] = {}
+    years: dict[str, str] = {}
+    for name, indicator in WORLD_BANK_INDICATORS.items():
+        query = urlencode({"format": "json", "per_page": "6"})
+        request = Request(
+            f"{WORLD_BANK_URL.format(country_code=country_code, indicator=indicator)}?{query}",
+            headers={"User-Agent": "real-estate-price-estimator/0.1"},
+        )
+        with urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        rows = payload[1] if isinstance(payload, list) and len(payload) > 1 else []
+        for row in rows:
+            value = _as_float(row.get("value"))
+            if value is not None:
+                values[name] = value
+                years[name] = str(row.get("date", ""))
+                break
+    if not values:
+        return None
+    return RegionalMacroSignal(
+        country=country,
+        source="World Bank public indicators",
+        values=values,
+        years=years,
+    )
 
 
 def property_facts_for_address(address: str, *, api_key: str | None = None, timeout: float = 8) -> PropertyFacts | None:
@@ -331,6 +481,29 @@ def _address_location_from_geoapify(result: dict[str, object]) -> AddressLocatio
         latitude=_as_float(result.get("lat")),
         longitude=_as_float(result.get("lon")),
         source="Geoapify Address Autocomplete",
+    )
+
+
+def _address_location_from_nominatim(result: dict[str, object]) -> AddressLocation:
+    address = result.get("address", {})
+    city = (
+        address.get("city")
+        or address.get("town")
+        or address.get("village")
+        or address.get("municipality")
+        or address.get("county")
+        or ""
+    )
+    state = address.get("state") or address.get("region") or address.get("province") or ""
+    zip_code = address.get("postcode") or ""
+    return AddressLocation(
+        city=str(city),
+        state=str(state),
+        zip_code=str(zip_code),
+        matched_address=str(result.get("display_name") or ""),
+        latitude=_as_float(result.get("lat")),
+        longitude=_as_float(result.get("lon")),
+        source="OpenStreetMap Nominatim",
     )
 
 

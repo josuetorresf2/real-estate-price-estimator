@@ -17,11 +17,15 @@ from .market_data import (
     ensure_zhvi_csv,
     geocode_address,
     geocode_address_matches,
+    geocode_address_global,
     geoapify_address_suggestions,
     geoapify_neighborhood_for_address,
     latest_zhvi_for_zip,
     market_calibrated_estimate,
+    nominatim_address_matches,
     property_facts_for_address,
+    regional_macro_signal,
+    regional_listing_signal,
 )
 from .pipeline import load_model, load_training_data, predict_price, save_model, train
 
@@ -32,6 +36,7 @@ DEFAULT_ZHVI_PATH = PROJECT_ROOT / "data" / "zillow_zhvi_zip.csv"
 STATIC_ROOT = PROJECT_ROOT / "static"
 
 DEFAULT_FORM_VALUES = {
+    "country": "United States",
     "address": "",
     "city": "",
     "state": "",
@@ -48,6 +53,7 @@ DEFAULT_FORM_VALUES = {
 }
 
 FIELD_LABELS = {
+    "country": "Country",
     "address": "Address",
     "city": "City",
     "state": "State",
@@ -86,6 +92,7 @@ ADDRESS_ENRICHMENT_FIELDS = {
 FEATURE_FIELDS = {"city", "neighborhood", "zip_code", *NUMERIC_FIELDS}
 OPTIONAL_FIELDS = {
     "address",
+    "country",
     "city",
     "state",
     "neighborhood",
@@ -117,7 +124,7 @@ def parse_form(body: str) -> tuple[dict[str, object], dict[str, str], list[str]]
     features: dict[str, object] = {}
 
     for field, value in values.items():
-        if field in {"address", "state"}:
+        if field in {"address", "state", "country"}:
             continue
         if field in OPTIONAL_FIELDS and value.lower() in {"", "unknown", "unkown", "uknown", "n/a", "na"}:
             features[field] = None if field in NUMERIC_FIELDS else ""
@@ -405,6 +412,40 @@ def property_fact_payload(facts, distance_miles: float | None, neighborhood: str
         "fields": fields,
         "missing": missing,
         "provider_configured": bool(os.getenv("ATTOM_API_KEY")),
+    }
+
+
+def regional_listing_payload(signal) -> dict[str, object]:
+    if signal is None:
+        return {
+            "available": False,
+            "message": "No regional listing context found for this address/city.",
+        }
+    return {
+        "available": True,
+        "country": signal.country,
+        "source": signal.source,
+        "listing_count": signal.listing_count,
+        "average_price": "" if signal.average_price is None else f"{signal.average_price:,.0f}",
+        "currency": signal.currency,
+        "sample_titles": list(signal.sample_titles),
+        "message": "Regional listing context only. This is not an appraisal or official assessed value.",
+    }
+
+
+def regional_macro_payload(signal) -> dict[str, object]:
+    if signal is None:
+        return {
+            "available": False,
+            "message": "No regional macro context found.",
+        }
+    return {
+        "available": True,
+        "country": signal.country,
+        "source": signal.source,
+        "values": {key: f"{value:,.1f}" for key, value in signal.values.items()},
+        "years": signal.years,
+        "message": "Country-level context only. This is not address-level real estate data.",
     }
 
 
@@ -1478,6 +1519,7 @@ def render_page(
     }});
 
     const addressInput = document.querySelector('input[name="address"]');
+    const countryInput = document.querySelector('input[name="country"]');
     const cityInput = document.querySelector('input[name="city"]');
     const stateInput = document.querySelector('input[name="state"]');
     const zipInput = document.querySelector('input[name="zip_code"]');
@@ -1547,6 +1589,13 @@ def render_page(
       const fields = payload.property_facts?.fields || {{}};
       const distance = fields.distance_to_city_center_miles?.value || "Not available";
       const filled = Object.keys(fields).filter((field) => field !== "distance_to_city_center_miles").length;
+      const regional = payload.regional_listing || {{}};
+      const macro = payload.regional_macro || {{}};
+      const regionalLine = regional.available
+        ? `${{regional.listing_count}} listings • ${{regional.average_price || "n/a"}} ${{regional.currency || ""}} avg`
+        : macro.available
+        ? `World Bank context • GDP/cap ${{macro.values?.gdp_per_capita_usd || "n/a"}} • urban ${{macro.values?.urban_population_pct || "n/a"}}%`
+        : regional.message || "No regional listing context";
       liveContext.innerHTML = `
         <span>Address intelligence</span>
         <div class="live-map">
@@ -1555,6 +1604,7 @@ def render_page(
             <div><dt>Verified address</dt><dd>${{escapeText(payload.matched_address)}}</dd></div>
             <div><dt>Location</dt><dd>${{escapeText(payload.city)}}, ${{escapeText(payload.state)}} ${{escapeText(payload.zip_code)}}</dd></div>
             <div><dt>Miles to city center</dt><dd>${{escapeText(distance)}}</dd></div>
+            <div><dt>Regional signal</dt><dd>${{escapeText(regionalLine)}}</dd></div>
             <div><dt>Property facts filled</dt><dd>${{filled}} provider-backed fields</dd></div>
           </dl>
         </div>
@@ -1588,6 +1638,7 @@ def render_page(
       try {{
         const params = new URLSearchParams({{
           address,
+          country: countryInput.value.trim(),
           city: cityInput.value.trim(),
           state: stateInput.value.trim(),
           zip_code: zipInput.value.trim(),
@@ -1610,7 +1661,11 @@ def render_page(
       addressController = new AbortController();
       setAddressStatus("Checking Census Geocoder...");
       try {{
-        const response = await fetch(`/api/geocode?address=${{encodeURIComponent(address)}}`, {{
+        const params = new URLSearchParams({{
+          address,
+          country: countryInput.value.trim(),
+        }});
+        const response = await fetch(`/api/geocode?${{params.toString()}}`, {{
           signal: addressController.signal,
         }});
         const payload = await response.json();
@@ -1799,7 +1854,7 @@ def render_page(
 def input_attributes(field: str) -> str:
     if field == "year_built":
         return 'type="text" inputmode="numeric" placeholder="Leave blank unless known"'
-    if field in {"address", "city", "state", "neighborhood", "zip_code"}:
+    if field in {"address", "city", "state", "neighborhood", "zip_code", "country"}:
         return 'type="text"'
     if field in OPTIONAL_FIELDS:
         return 'type="text" inputmode="decimal" placeholder="unknown"'
@@ -1810,7 +1865,9 @@ def field_help(field: str) -> str:
     if field == "year_built":
         return '<small class="field-help">Leave blank if unknown. Enter 2026 for a brand-new build scenario.</small>'
     if field == "address":
-        return '<small class="field-help">Optional. Used to look up city, state, ZIP, and map area through the U.S. Census Geocoder.</small>'
+        return '<small class="field-help">Used to verify location, map context, and country-specific public signals.</small>'
+    if field == "country":
+        return '<small class="field-help">Supported: United States, Ecuador, Brazil, Peru, Colombia, Chile.</small>'
     if field in {"neighborhood", "square_feet", "bedrooms", "bathrooms", "lot_size", "school_rating", "distance_to_city_center_miles", "crime_index"}:
         return '<small class="field-help">Type unknown or leave blank if public data does not have it.</small>'
     return ""
@@ -1845,12 +1902,13 @@ class AppHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/geocode":
             params = parse_qs(parsed.query)
-            self.respond_geocode(params.get("address", [""])[0])
+            self.respond_geocode(params.get("address", [""])[0], country=params.get("country", ["United States"])[0])
             return
         if parsed.path == "/api/suggest":
             params = parse_qs(parsed.query)
             self.respond_suggestions(
                 params.get("address", [""])[0],
+                country=params.get("country", ["United States"])[0],
                 city=params.get("city", [""])[0],
                 state=params.get("state", [""])[0],
                 zip_code=params.get("zip_code", [""])[0],
@@ -1879,12 +1937,13 @@ class AppHandler(BaseHTTPRequestHandler):
         decision = None
         if not errors:
             try:
+                country = values.get("country") or "United States"
                 if values.get("address"):
-                    address_location = self.lookup_address(values["address"])
+                    address_location = self.lookup_address(values["address"], country=country)
                     apply_address_location(values, features, address_location)
-                    property_facts = self.lookup_property_facts(values["address"])
+                    property_facts = self.lookup_property_facts(values["address"], country=country)
                     apply_property_facts(values, features, property_facts)
-                    neighborhood = self.lookup_neighborhood(values["address"])
+                    neighborhood = self.lookup_neighborhood(values["address"], country=country)
                     apply_neighborhood(values, features, neighborhood)
                     distance_miles = self.lookup_distance_to_city_center(address_location) if address_location is not None else None
                     if distance_miles is not None and values.get("distance_to_city_center_miles", "").lower() in {"", "unknown", "unkown", "uknown", "n/a", "na"}:
@@ -1892,8 +1951,9 @@ class AppHandler(BaseHTTPRequestHandler):
                         features["distance_to_city_center_miles"] = distance_miles
                 prediction_features = finalize_prediction_features(features)
                 lookup_zip = str(values.get("zip_code", "") or prediction_features.get("zip_code", ""))
-                market_signal = self.lookup_market_signal(lookup_zip)
-                census_signal = self.lookup_census_signal(lookup_zip)
+                if country == "United States":
+                    market_signal = self.lookup_market_signal(lookup_zip)
+                    census_signal = self.lookup_census_signal(lookup_zip)
                 known_fact_count = known_property_fact_count(features)
                 if should_use_model(features):
                     model_prediction = predict_price(self.model, prediction_features)
@@ -1905,7 +1965,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 )
                 prediction = decision.estimate
                 if prediction is None:
-                    errors.append("Enter a valid U.S. address or ZIP so public market data can anchor the estimate.")
+                    errors.append("Enter a valid address or ZIP/postal code so public market data can anchor the estimate.")
             except ValueError as exc:
                 errors.append(str(exc))
             except OSError:
@@ -1944,27 +2004,43 @@ class AppHandler(BaseHTTPRequestHandler):
     def lookup_census_signal(self, zip_code: str):
         return census_home_value_for_zip(zip_code)
 
-    def lookup_address(self, address: str):
-        return geocode_address(address)
+    def lookup_address(self, address: str, *, country: str = "United States"):
+        return geocode_address_global(address, country=country)
 
-    def lookup_address_matches(self, address: str):
-        return geocode_address_matches(address)
+    def lookup_address_matches(self, address: str, *, country: str = "United States"):
+        if country == "United States":
+            return geocode_address_matches(address)
+        return nominatim_address_matches(address, country=country)
 
-    def lookup_autocomplete_matches(self, address: str):
+    def lookup_autocomplete_matches(self, address: str, *, country: str = "United States"):
         try:
-            return geoapify_address_suggestions(address)
+            return geoapify_address_suggestions(address, country=country)
         except OSError:
             return []
 
-    def lookup_property_facts(self, address: str):
+    def lookup_property_facts(self, address: str, *, country: str = "United States"):
+        if country != "United States":
+            return None
         try:
             return property_facts_for_address(address)
         except OSError:
             return None
 
-    def lookup_neighborhood(self, address: str):
+    def lookup_neighborhood(self, address: str, *, country: str = "United States"):
         try:
-            return geoapify_neighborhood_for_address(address)
+            return geoapify_neighborhood_for_address(address, country=country)
+        except OSError:
+            return None
+
+    def lookup_regional_listing_signal(self, query: str, *, country: str):
+        try:
+            return regional_listing_signal(query, country=country)
+        except OSError:
+            return None
+
+    def lookup_regional_macro_signal(self, *, country: str):
+        try:
+            return regional_macro_signal(country)
         except OSError:
             return None
 
@@ -1974,33 +2050,39 @@ class AppHandler(BaseHTTPRequestHandler):
         except OSError:
             return None
 
-    def respond_suggestions(self, address: str, *, city: str = "", state: str = "", zip_code: str = "") -> None:
+    def respond_suggestions(self, address: str, *, country: str = "United States", city: str = "", state: str = "", zip_code: str = "") -> None:
         query = enriched_address_query(address, city=city, state=state, zip_code=zip_code)
         try:
-            matches = self.lookup_autocomplete_matches(query) or self.lookup_address_matches(query)
+            matches = self.lookup_autocomplete_matches(query, country=country) or self.lookup_address_matches(query, country=country)
         except OSError:
             matches = []
         self.respond_json({"suggestions": [location_payload(match) for match in matches[:5]]})
 
-    def respond_geocode(self, address: str) -> None:
+    def respond_geocode(self, address: str, *, country: str = "United States") -> None:
         try:
-            location = self.lookup_address(address)
-            suggestions = self.lookup_address_matches(address) if location is not None else []
+            location = self.lookup_address(address, country=country)
+            suggestions = self.lookup_address_matches(address, country=country) if location is not None else []
         except OSError:
             location = None
             suggestions = []
         if location is None:
             self.respond_json({"matched": False})
             return
-        property_facts = self.lookup_property_facts(address)
-        neighborhood = self.lookup_neighborhood(address)
+        property_facts = self.lookup_property_facts(address, country=country)
+        neighborhood = self.lookup_neighborhood(address, country=country)
         distance_miles = self.lookup_distance_to_city_center(location)
+        regional_query = " ".join(part for part in (location.city, location.state, country) if part)
+        regional_signal = self.lookup_regional_listing_signal(regional_query, country=country)
+        macro_signal = self.lookup_regional_macro_signal(country=country)
         self.respond_json(
             {
                 "matched": True,
                 **location_payload(location),
+                "country": country,
                 "suggestions": [location_payload(match) for match in suggestions[:5]],
                 "property_facts": property_fact_payload(property_facts, distance_miles, neighborhood),
+                "regional_listing": regional_listing_payload(regional_signal),
+                "regional_macro": regional_macro_payload(macro_signal),
                 "street_view_url": street_view_url(location),
                 "mapbox_static_url": mapbox_static_url(location),
             }

@@ -228,12 +228,14 @@ def test_geocode_route_returns_verified_location(monkeypatch):
         longitude=-104.99,
     )
 
-    monkeypatch.setattr(AppHandler, "lookup_address", lambda self, address: location)
+    monkeypatch.setattr(AppHandler, "lookup_address", lambda self, address, country="United States": location)
     queries = []
-    monkeypatch.setattr(AppHandler, "lookup_address_matches", lambda self, address: queries.append(address) or [location])
-    monkeypatch.setattr(AppHandler, "lookup_property_facts", lambda self, address: None)
-    monkeypatch.setattr(AppHandler, "lookup_neighborhood", lambda self, address: "Downtown")
+    monkeypatch.setattr(AppHandler, "lookup_address_matches", lambda self, address, country="United States": queries.append(address) or [location])
+    monkeypatch.setattr(AppHandler, "lookup_property_facts", lambda self, address, country="United States": None)
+    monkeypatch.setattr(AppHandler, "lookup_neighborhood", lambda self, address, country="United States": "Downtown")
     monkeypatch.setattr(AppHandler, "lookup_distance_to_city_center", lambda self, location: 1.4)
+    monkeypatch.setattr(AppHandler, "lookup_regional_listing_signal", lambda self, query, country: None)
+    monkeypatch.setattr(AppHandler, "lookup_regional_macro_signal", lambda self, country: None)
     monkeypatch.setattr(AppHandler, "respond_json", lambda self, payload: responses.append(payload))
 
     handler = object.__new__(AppHandler)
@@ -251,6 +253,7 @@ def test_geocode_route_returns_verified_location(monkeypatch):
             "latitude": "39.75",
             "longitude": "-104.99",
             "source": "U.S. Census Geocoder",
+            "country": "United States",
             "suggestions": [
                 {
                     "city": "Denver",
@@ -284,6 +287,14 @@ def test_geocode_route_returns_verified_location(monkeypatch):
                 },
                 "provider_configured": False,
             },
+            "regional_listing": {
+                "available": False,
+                "message": "No regional listing context found for this address/city.",
+            },
+            "regional_macro": {
+                "available": False,
+                "message": "No regional macro context found.",
+            },
             "street_view_url": "",
             "mapbox_static_url": "",
         }
@@ -300,7 +311,7 @@ def test_suggest_route_returns_address_options(monkeypatch):
     )
 
     queries = []
-    monkeypatch.setattr(AppHandler, "lookup_address_matches", lambda self, address: queries.append(address) or [location])
+    monkeypatch.setattr(AppHandler, "lookup_address_matches", lambda self, address, country="United States": queries.append(address) or [location])
     monkeypatch.setattr(AppHandler, "respond_json", lambda self, payload: responses.append(payload))
 
     handler = object.__new__(AppHandler)
