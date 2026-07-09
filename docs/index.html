@@ -7,12 +7,13 @@
   <style>
     :root {
       color-scheme: dark;
-      --bg: #08090b;
+      --bg: #07080a;
       --panel: rgba(255, 255, 255, 0.075);
       --line: rgba(255, 255, 255, 0.16);
-      --ink: #edf3f7;
-      --muted: rgba(237, 243, 247, 0.68);
+      --ink: #eef5f8;
+      --muted: rgba(238, 245, 248, 0.66);
       --accent: #ff8f1f;
+      --purple: #b600a8;
     }
     * { box-sizing: border-box; }
     body {
@@ -21,155 +22,324 @@
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       color: var(--ink);
       background:
-        radial-gradient(circle at 70% 12%, rgba(255, 143, 31, 0.28), transparent 30%),
-        radial-gradient(circle at 15% 20%, rgba(151, 71, 255, 0.22), transparent 28%),
-        linear-gradient(145deg, #08090b, #11131a 55%, #090a0d);
+        linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px),
+        radial-gradient(circle at 72% 8%, rgba(255, 143, 31, 0.26), transparent 28%),
+        radial-gradient(circle at 15% 22%, rgba(182, 0, 168, 0.2), transparent 28%),
+        #07080a;
+      background-size: 44px 44px, 44px 44px, auto, auto, auto;
     }
-    main {
-      width: min(1120px, calc(100% - 32px));
-      margin: 0 auto;
-      padding: 56px 0;
+    main { width: min(1180px, calc(100% - 28px)); margin: 0 auto; padding: 36px 0; }
+    nav, .panel, .result, .map-shell {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: 0 34px 120px rgba(0,0,0,0.42);
+      backdrop-filter: blur(24px) saturate(135%);
     }
-    .hero {
-      display: grid;
-      grid-template-columns: minmax(0, 0.95fr) minmax(320px, 1.05fr);
-      gap: 28px;
-      align-items: center;
-      min-height: 78vh;
-    }
-    .eyebrow {
-      color: var(--accent);
-      font-size: 0.78rem;
-      font-weight: 800;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-    }
-    h1 {
-      margin: 14px 0;
-      max-width: 760px;
-      font-size: clamp(3rem, 8vw, 7.2rem);
-      line-height: 0.9;
-      letter-spacing: -0.04em;
-    }
-    p {
-      color: var(--muted);
-      font-size: 1.05rem;
-      line-height: 1.65;
-    }
-    .actions {
+    nav {
       display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      margin-top: 28px;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+      border-radius: 999px;
+      padding: 12px 16px;
     }
-    a {
-      color: inherit;
+    nav strong { font-size: 0.96rem; }
+    nav span { color: var(--muted); font-size: 0.86rem; }
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(320px, 1.1fr);
+      gap: 24px;
+      align-items: end;
+      padding: 54px 0 24px;
     }
-    .button {
+    .eyebrow { color: var(--accent); font-size: 0.78rem; font-weight: 850; letter-spacing: 0.14em; text-transform: uppercase; }
+    h1 { margin: 12px 0; font-size: clamp(3rem, 8vw, 7rem); line-height: 0.9; letter-spacing: -0.04em; }
+    p { color: var(--muted); line-height: 1.6; }
+    .workspace { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(340px, 0.92fr); gap: 14px; }
+    .panel, .result { border-radius: 24px; padding: 18px; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    label { display: grid; gap: 7px; min-width: 0; border: 1px solid rgba(255,255,255,0.11); border-radius: 16px; padding: 12px; background: rgba(255,255,255,0.055); }
+    label.address { grid-column: span 3; }
+    label span { color: var(--muted); font-size: 0.74rem; font-weight: 800; text-transform: uppercase; }
+    input, select {
+      width: 100%;
+      border: 0;
+      border-bottom: 1px solid rgba(255,255,255,0.2);
+      background: transparent;
+      color: var(--ink);
+      font: inherit;
+      font-size: 1rem;
+      font-weight: 700;
+      padding: 3px 0 8px;
+      outline: 0;
+    }
+    select option { background: #111318; }
+    input:focus, select:focus { border-color: var(--accent); }
+    small { color: var(--muted); line-height: 1.35; }
+    button, .button {
+      min-height: 50px;
+      border: 0;
+      border-radius: 999px;
+      padding: 0 18px;
+      background: rgba(255,255,255,0.94);
+      color: #090a0d;
+      font: inherit;
+      font-weight: 850;
+      cursor: pointer;
+      text-decoration: none;
       display: inline-flex;
       align-items: center;
-      min-height: 48px;
-      padding: 0 18px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.92);
-      color: #08090b;
-      font-weight: 800;
-      text-decoration: none;
+      justify-content: center;
     }
-    .button.secondary {
-      background: rgba(255, 255, 255, 0.07);
-      color: var(--ink);
-    }
-    .preview {
-      padding: 10px;
-      border: 1px solid var(--line);
-      border-radius: 26px;
-      background: var(--panel);
-      box-shadow: 0 34px 130px rgba(0, 0, 0, 0.48);
-      backdrop-filter: blur(24px);
-    }
-    .preview img {
-      display: block;
-      width: 100%;
-      border-radius: 18px;
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 14px;
-      margin-top: 20px;
-    }
-    .card {
-      min-height: 150px;
-      padding: 18px;
-      border: 1px solid var(--line);
-      border-radius: 18px;
-      background: var(--panel);
-    }
-    .card strong {
-      display: block;
-      margin-bottom: 8px;
-      color: white;
-      font-size: 1rem;
-    }
-    .card span {
-      color: var(--muted);
-      line-height: 1.5;
-    }
-    footer {
-      margin-top: 42px;
-      color: var(--muted);
-      font-size: 0.92rem;
-    }
-    @media (max-width: 860px) {
-      .hero,
-      .grid {
-        grid-template-columns: 1fr;
-      }
-      .hero {
-        min-height: auto;
-      }
+    button.secondary, .button.secondary { background: rgba(255,255,255,0.08); color: var(--ink); border: 1px solid var(--line); }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+    .suggestions { display: grid; gap: 7px; padding: 0; margin: 8px 0 0; list-style: none; }
+    .suggestions button { width: 100%; min-height: auto; justify-content: flex-start; padding: 10px 12px; border-radius: 14px; background: rgba(255,255,255,0.08); color: var(--ink); text-align: left; }
+    .result { display: grid; gap: 14px; align-content: start; }
+    .estimate { display: grid; gap: 4px; padding: 18px; border-radius: 20px; background: rgba(255,255,255,0.08); }
+    .estimate span { color: var(--muted); font-weight: 750; text-transform: uppercase; font-size: 0.75rem; }
+    .estimate strong { font-size: clamp(2.4rem, 6vw, 4.8rem); line-height: 0.95; }
+    .map-shell { overflow: hidden; border-radius: 22px; min-height: 280px; background: #101216; }
+    iframe { display: block; width: 100%; min-height: 280px; border: 0; filter: grayscale(0.18) contrast(1.05) brightness(0.9); }
+    dl { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin: 0; }
+    dl div { border: 1px solid rgba(255,255,255,0.1); border-radius: 15px; padding: 12px; background: rgba(255,255,255,0.055); }
+    dt { color: var(--muted); font-size: 0.72rem; font-weight: 800; text-transform: uppercase; }
+    dd { margin: 4px 0 0; font-weight: 760; }
+    .note { border-left: 3px solid var(--accent); padding-left: 12px; }
+    @media (max-width: 900px) {
+      header, .workspace, .grid { grid-template-columns: 1fr; }
+      label.address { grid-column: auto; }
+      nav { align-items: flex-start; border-radius: 22px; flex-direction: column; }
     }
   </style>
 </head>
 <body>
   <main>
-    <section class="hero">
+    <nav>
+      <strong>ValuationCheck</strong>
+      <span>Functional GitHub Pages edition by Joshue Torres</span>
+    </nav>
+    <header>
       <div>
-        <span class="eyebrow">Portfolio project by Joshue Torres</span>
+        <span class="eyebrow">Public real estate workbench</span>
         <h1>Property Valuation Workbench</h1>
-        <p>
-          A production-style real estate estimator that verifies locations, maps properties,
-          checks public data coverage, and explains when the model should not pretend to know
-          unavailable property facts.
-        </p>
-        <div class="actions">
-          <a class="button" href="https://render.com/deploy?repo=https://github.com/josuetorresf2/real-estate-price-estimator">Deploy on Render</a>
-          <a class="button secondary" href="https://github.com/josuetorresf2/real-estate-price-estimator">View GitHub Repo</a>
+      </div>
+      <p>
+        This GitHub Pages version runs directly in the browser. It verifies and maps addresses with
+        public geocoding, lets users add property facts, and returns a transparent estimate demo with
+        source notes.
+      </p>
+    </header>
+    <section class="workspace">
+      <form class="panel" id="estimateForm">
+        <div class="grid">
+          <label>
+            <span>Country</span>
+            <select id="country">
+              <option>United States</option>
+              <option>Ecuador</option>
+              <option>Brazil</option>
+              <option>Peru</option>
+              <option>Colombia</option>
+              <option>Chile</option>
+            </select>
+            <small>Changing country clears the previous property context.</small>
+          </label>
+          <label class="address">
+            <span>Address or place</span>
+            <input id="address" autocomplete="street-address" placeholder="Try 1701 Wynkoop St Denver CO">
+            <small id="addressStatus">Type an address, place, or short fragment.</small>
+            <ul class="suggestions" id="suggestions"></ul>
+          </label>
+          <label><span>City</span><input id="city" placeholder="Auto-filled when found"></label>
+          <label><span>State / region</span><input id="state" placeholder="Auto-filled when found"></label>
+          <label><span>Postal code</span><input id="postal" placeholder="Auto-filled when found"></label>
+          <label><span>Square feet</span><input id="sqft" inputmode="decimal" placeholder="unknown"></label>
+          <label><span>Bedrooms</span><input id="beds" inputmode="decimal" placeholder="unknown"></label>
+          <label><span>Bathrooms</span><input id="baths" inputmode="decimal" placeholder="unknown"></label>
+          <label><span>Lot size acres</span><input id="lot" inputmode="decimal" placeholder="unknown"></label>
+          <label><span>Year built</span><input id="year" inputmode="numeric" placeholder="optional"></label>
+          <label><span>School rating</span><input id="school" inputmode="decimal" placeholder="unknown"></label>
         </div>
-      </div>
-      <div class="preview">
-        <img src="./images/estimator-hero.jpg" alt="Property Valuation Workbench application preview">
-      </div>
+        <div class="actions">
+          <button type="button" id="verifyButton">Verify address</button>
+          <button type="submit">Estimate price</button>
+          <a class="button secondary" href="https://github.com/josuetorresf2/real-estate-price-estimator">GitHub repo</a>
+        </div>
+      </form>
+      <aside class="result">
+        <div class="estimate">
+          <span>Estimated range</span>
+          <strong id="estimateValue">Ready</strong>
+          <p id="estimateNote">Verify an address, add known property facts, then run an estimate.</p>
+        </div>
+        <div class="map-shell" id="mapShell">
+          <iframe title="Map preview" src="https://www.openstreetmap.org/export/embed.html?bbox=-105.02,39.72,-104.96,39.76&layer=mapnik"></iframe>
+        </div>
+        <dl>
+          <div><dt>Verified location</dt><dd id="verifiedLocation">Not verified yet</dd></div>
+          <div><dt>Source</dt><dd id="sourceLabel">Browser geocoding demo</dd></div>
+          <div><dt>Confidence</dt><dd id="confidence">Waiting for inputs</dd></div>
+          <div><dt>Data policy</dt><dd>No fake precision</dd></div>
+        </dl>
+        <p class="note">
+          GitHub Pages cannot run the Python backend. This page is a functional static demo.
+          The repository also includes the full Python estimator and Docker config for backend hosting.
+        </p>
+      </aside>
     </section>
-    <section class="grid" aria-label="Project highlights">
-      <div class="card">
-        <strong>Real data workflow</strong>
-        <span>Uses Census, Zillow Research, OpenStreetMap, optional provider APIs, and regional public context.</span>
-      </div>
-      <div class="card">
-        <strong>Honest estimates</strong>
-        <span>Separates property-level model estimates from public market baselines and labels uncertainty.</span>
-      </div>
-      <div class="card">
-        <strong>Deployable app</strong>
-        <span>Ships with Docker, Render Blueprint config, Vercel WSGI fallback, tests, and a health endpoint.</span>
-      </div>
-    </section>
-    <footer>
-      GitHub Pages is a static portfolio page. Use Render or Vercel to run the live Python estimator.
-    </footer>
   </main>
+  <script>
+    const baselines = {
+      "United States": { ppsf: 255, currency: "$", code: "us", band: 0.18 },
+      "Ecuador": { ppsf: 95, currency: "$", code: "ec", band: 0.28 },
+      "Brazil": { ppsf: 140, currency: "$", code: "br", band: 0.30 },
+      "Peru": { ppsf: 125, currency: "$", code: "pe", band: 0.30 },
+      "Colombia": { ppsf: 115, currency: "$", code: "co", band: 0.32 },
+      "Chile": { ppsf: 170, currency: "$", code: "cl", band: 0.28 }
+    };
+    const fields = ["address", "city", "state", "postal", "sqft", "beds", "baths", "lot", "year", "school"];
+    const $ = (id) => document.getElementById(id);
+    let selectedLocation = null;
+    let suggestionTimer = null;
+
+    function numberValue(id) {
+      const value = $(id).value.trim().toLowerCase();
+      if (!value || ["unknown", "unkown", "uknown", "n/a", "na"].includes(value)) return null;
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    function money(value, country) {
+      const baseline = baselines[country] || baselines["United States"];
+      return `${baseline.currency}${Math.round(value).toLocaleString()}`;
+    }
+
+    function resetForCountry() {
+      fields.forEach((id) => { $(id).value = ""; });
+      selectedLocation = null;
+      $("suggestions").innerHTML = "";
+      $("addressStatus").textContent = "Country changed. Start with an address or place.";
+      $("estimateValue").textContent = "Ready";
+      $("estimateNote").textContent = "Verify an address, add known property facts, then run an estimate.";
+      $("verifiedLocation").textContent = "Not verified yet";
+      $("confidence").textContent = "Waiting for inputs";
+      $("address").focus();
+    }
+
+    function mapFor(lat, lon) {
+      const dLat = 0.012;
+      const dLon = 0.018;
+      return `https://www.openstreetmap.org/export/embed.html?bbox=${lon - dLon},${lat - dLat},${lon + dLon},${lat + dLat}&layer=mapnik&marker=${lat},${lon}`;
+    }
+
+    function applyLocation(item) {
+      const address = item.address || {};
+      selectedLocation = {
+        lat: Number(item.lat),
+        lon: Number(item.lon),
+        label: item.display_name || ""
+      };
+      $("address").value = selectedLocation.label;
+      $("city").value = address.city || address.town || address.village || address.municipality || address.county || "";
+      $("state").value = address.state || address.region || address.province || "";
+      $("postal").value = address.postcode || "";
+      $("verifiedLocation").textContent = selectedLocation.label || "Verified";
+      $("sourceLabel").textContent = "OpenStreetMap Nominatim";
+      if (Number.isFinite(selectedLocation.lat) && Number.isFinite(selectedLocation.lon)) {
+        $("mapShell").innerHTML = `<iframe title="Verified address map" src="${mapFor(selectedLocation.lat, selectedLocation.lon)}"></iframe>`;
+      }
+      $("addressStatus").textContent = "Verified location selected.";
+      $("suggestions").innerHTML = "";
+    }
+
+    async function searchAddress(limit = 5) {
+      const address = $("address").value.trim();
+      const country = $("country").value;
+      if (address.length < 3) return [];
+      $("addressStatus").textContent = "Searching public geocoding data...";
+      const params = new URLSearchParams({
+        q: `${address}, ${country}`,
+        format: "jsonv2",
+        addressdetails: "1",
+        limit: String(limit),
+        countrycodes: baselines[country].code
+      });
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`);
+      if (!response.ok) throw new Error("Geocoding failed");
+      return response.json();
+    }
+
+    async function renderSuggestions() {
+      try {
+        const results = await searchAddress(5);
+        const list = $("suggestions");
+        list.innerHTML = "";
+        if (!results.length) {
+          $("addressStatus").textContent = "No public match yet. Add city, region, or more address detail.";
+          return;
+        }
+        $("addressStatus").textContent = "Choose a verified option.";
+        results.forEach((item) => {
+          const li = document.createElement("li");
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = item.display_name;
+          button.addEventListener("click", () => applyLocation(item));
+          li.appendChild(button);
+          list.appendChild(li);
+        });
+      } catch (error) {
+        $("addressStatus").textContent = "Public geocoding is unavailable right now.";
+      }
+    }
+
+    async function verifyAddress() {
+      const results = await searchAddress(1);
+      if (results.length) applyLocation(results[0]);
+    }
+
+    function estimate() {
+      const country = $("country").value;
+      const baseline = baselines[country] || baselines["United States"];
+      const sqft = numberValue("sqft");
+      const beds = numberValue("beds");
+      const baths = numberValue("baths");
+      const lot = numberValue("lot");
+      const school = numberValue("school");
+      const year = numberValue("year");
+      let known = 0;
+      let price = sqft ? sqft * baseline.ppsf : baseline.ppsf * 1500;
+      if (sqft) known += 1;
+      if (beds) { price += beds * baseline.ppsf * 95; known += 1; }
+      if (baths) { price += baths * baseline.ppsf * 120; known += 1; }
+      if (lot) { price += Math.min(lot, 2) * baseline.ppsf * 850; known += 1; }
+      if (school) { price *= 1 + Math.max(-0.08, Math.min(0.16, (school - 5) * 0.025)); known += 1; }
+      if (year) {
+        const age = Math.max(0, new Date().getFullYear() - year);
+        price *= Math.max(0.78, 1 - age * 0.0035);
+        known += 1;
+      }
+      if (selectedLocation) known += 1;
+      const band = baseline.band + (known < 4 ? 0.16 : known < 6 ? 0.08 : 0);
+      $("estimateValue").textContent = `${money(price * (1 - band), country)} - ${money(price * (1 + band), country)}`;
+      $("estimateNote").textContent = selectedLocation
+        ? `Static GitHub Pages estimate for ${country}. Uses browser-side public geocoding plus entered property facts.`
+        : `Static estimate for ${country}. Verify the address for better map and location context.`;
+      $("confidence").textContent = known >= 6 ? "Medium demo confidence" : known >= 4 ? "Low demo confidence" : "Very low; add more facts";
+    }
+
+    $("country").addEventListener("change", resetForCountry);
+    $("verifyButton").addEventListener("click", verifyAddress);
+    $("estimateForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      estimate();
+    });
+    $("address").addEventListener("input", () => {
+      clearTimeout(suggestionTimer);
+      suggestionTimer = setTimeout(renderSuggestions, 550);
+    });
+  </script>
 </body>
 </html>

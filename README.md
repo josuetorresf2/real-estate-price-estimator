@@ -4,16 +4,16 @@
 
 A production-style real estate valuation workbench that verifies locations, maps properties, checks public data coverage, and produces transparent market-aware estimates without pretending unavailable property data is known.
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/josuetorresf2/real-estate-price-estimator)
-
 ![Property Valuation Workbench hero](docs/images/estimator-hero.jpg)
 
 ## Public Links
 
+- Live GitHub Pages app: [josuetorresf2.github.io/real-estate-price-estimator](https://josuetorresf2.github.io/real-estate-price-estimator/)
 - Repository: [github.com/josuetorresf2/real-estate-price-estimator](https://github.com/josuetorresf2/real-estate-price-estimator)
-- Render deploy: [one-click Blueprint deploy](https://render.com/deploy?repo=https://github.com/josuetorresf2/real-estate-price-estimator)
-- Vercel deploy fallback: import the public GitHub repo into Vercel. The repo includes `app.py`, `vercel.json`, and a WSGI adapter for Vercel's Python runtime.
-- GitHub Pages note: Pages is static hosting. It is good for a portfolio/project page, but it cannot run the Python estimator, model, geocoding APIs, or `/predict` backend.
+
+The GitHub Pages version is a functional browser app. It verifies and maps addresses with OpenStreetMap/Nominatim, accepts property facts, resets stale data when the country changes, and returns a transparent estimate range directly in the browser.
+
+The Python backend in `src/` remains available for local development and Docker hosting. GitHub Pages cannot execute Python, so the hosted `github.io` app uses a client-side estimator designed for public portfolio access.
 
 ## Why This Project Exists
 
@@ -115,7 +115,7 @@ flowchart LR
 | U.S. data | Zillow Research, U.S. Census Geocoder, optional ACS |
 | Global data | OpenStreetMap/Nominatim, World Bank, Mercado Libre public search |
 | Optional providers | ATTOM, Geoapify, Google Street View, Mapbox |
-| Deployment | Docker, Render blueprint |
+| Deployment | GitHub Pages static app, Docker for Python backend |
 | Verification | pytest, `verify.sh` |
 
 ## Data Sources and Honesty
@@ -175,35 +175,17 @@ docker build -t property-valuation-workbench .
 docker run --rm -p 8000:8000 property-valuation-workbench
 ```
 
-## Free Deployment Path
+## GitHub Pages Deployment
 
-This repo includes `render.yaml` and a `Dockerfile` for Render.
+The public portfolio app is served from `docs/index.html`.
 
-1. Push this repository to GitHub.
-2. Click **Deploy to Render** at the top of this README, or create a new Blueprint from the repository in Render.
-3. Select the free web service plan.
-4. Add optional secrets for provider keys.
-5. Deploy. Render builds the Docker image and publishes the app on a generated `onrender.com` URL.
+GitHub Pages settings:
 
-## Vercel Fallback
+- Source branch: `main`
+- Source folder: `/docs`
+- Public URL: `https://josuetorresf2.github.io/real-estate-price-estimator/`
 
-Vercel can run this app through its Python WSGI runtime. This is useful if Docker deployment is unavailable.
-
-1. In Vercel, import `https://github.com/josuetorresf2/real-estate-price-estimator`.
-2. Keep the default project root.
-3. Vercel reads `app.py`, `vercel.json`, and `[tool.vercel]` from `pyproject.toml`.
-4. Add optional environment variables for API keys.
-5. Deploy.
-
-The Vercel path uses `src/real_estate_price_estimator/wsgi.py`, which adapts the same app routes to serverless WSGI:
-
-- `/`
-- `/predict`
-- `/health`
-- `/api/geocode`
-- `/api/suggest`
-- `/api/reverse-geocode`
-- `/static/vendor/three.module.js`
+This is the link to share with recruiters and visitors.
 
 ## Training and CLI Usage
 
